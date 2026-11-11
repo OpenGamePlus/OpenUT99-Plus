@@ -39,7 +39,12 @@ class Reader:
         return -v if first & 0x80 else v
 
     def string(self):
+        """Length-prefixed string (count includes the NUL); a negative count means UTF-16 characters."""
         n = self.index()
+        if n < 0:
+            s = self.data[self.pos:self.pos - 2 * n]
+            self.pos -= 2 * n
+            return s.decode("utf-16-le").rstrip("\0")
         s = self.data[self.pos:self.pos + n]
         self.pos += n
         return s.rstrip(b"\0").decode("latin-1")

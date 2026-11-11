@@ -11,7 +11,7 @@
 | `Music` (33: 30 IT, 2 S3M, 1 XM) | [sound.md](sound.md) | `tools/usound.py` | exact |
 | `Level`, `Model` (BSP), `Polys`, actors (`.unr`) | — | — | open |
 | `Mesh` / `LodMesh` (vertex animation), `SkeletalMesh` | — | — | open |
-| `Class`, `State`, `Function`, bytecode (`.u`) | — | — | open |
+| `Class`, `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, `*Property`, bytecode | [script.md](script.md) | `tools/uscript.py` | exact on all; token semantics from public docs |
 | `Font` | [font.md](font.md) | `tools/ufont.py` | exact |
 | `.ini` / `.int` configuration and localisation | — | — | open |
 | Network protocol | — | — | open (roadmap E) |

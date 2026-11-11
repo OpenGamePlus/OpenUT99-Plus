@@ -30,6 +30,10 @@ Variable-length signed integer. Byte 0: bit 7 sign, bit 6 "more", bits 5–0 val
 | 28 | u32 ×2 | import count, import table offset |
 | 36 | — | version ≥ 68: GUID (16 bytes), generation count u32, generations (export count u32, name count u32 each). Version < 68: heritage count u32, heritage offset u32 |
 
+## Strings
+
+Compact-index length including the trailing NUL, then the bytes (Latin-1). A negative length means that many UTF-16LE characters. Reader: `upkg.Reader.string`.
+
 ## Name table
 
 Per name: version ≥ 64: compact-index length (including the trailing NUL), then the bytes; version < 64: NUL-terminated string. Then u32 object flags.

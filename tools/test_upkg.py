@@ -72,6 +72,11 @@ class UpkgTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             lazy_bytes(Reader(struct.pack("<I", 99) + cindex(3) + payload), 69)
 
+    def test_string_negative_length_is_utf16(self):
+        r = Reader(cindex(-3) + "hé".encode("utf-16-le") + b"\0\0" + b"x")
+        self.assertEqual(r.string(), "hé")
+        self.assertEqual(r.pos, 1 + 6)
+
     def test_bad_tag(self):
         with self.assertRaises(ValueError):
             parse(b"\0" * 64)

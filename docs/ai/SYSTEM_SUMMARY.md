@@ -15,6 +15,7 @@ tools/
   utex.py            Palette, Texture (mips, PNG preview)
   usound.py          Sound, Music (embedded WAV / IT / S3M / XM)
   ufont.py           Font (pages, glyph rectangles, 469 remap)
+  uscript.py         Class, State, Function, Struct, Enum, Const, TextBuffer, *Property, bytecode
   uobjects.py        dispatcher + sweep over all exports (exact / leftover / error / noreader)
   check_docs.py      documentation checker
   test_*.py          unit tests on synthetic data
@@ -30,7 +31,8 @@ tools/
 | FireTexture, WetTexture, WaveTexture, IceTexture | done (data); animation not decoded |
 | Sound, Music | done, byte-exact |
 | Font | done, byte-exact |
-| Other class-specific data (levels, meshes, classes) | not started |
+| Script objects and bytecode | done, byte-exact (token semantics from public docs) |
+| Other class-specific data (levels, meshes) | not started |
 | Engine (C++) | not started |
 | Network | not started |
 
@@ -46,6 +48,7 @@ python3 tools/uobjects.py --sweep <UT99_DIR>     # phase A progress: classes not
 python3 tools/uobjects.py FILE OBJECT            # decode one export
 python3 tools/utex.py FILE TEXTURE --png out/x.png   # P8 preview
 python3 tools/usound.py FILE OBJECT --out out/x.wav  # embedded file
+python3 tools/uscript.py --tokens <UT99_DIR>     # bytecode token histogram
 ```
 
 ## Contracts
@@ -57,3 +60,4 @@ python3 tools/usound.py FILE OBJECT --out out/x.wav  # embedded file
 - `utex.read_palette(...) -> [(R,G,B,A)]`; `utex.read_texture(...) -> {"mips": [...], "comp_mips"?: [...]}`, mip = `width`, `height`, `ubits`, `vbits`, `data`; `utex.read_mips(pkg, data, pos)`.
 - `upkg.lazy_bytes(reader, version) -> bytes`: bulk data with the version ≥ 62 skip offset (checked). `usound.read_sound(...) -> {"format", "data"}`; `usound.signature(bytes) -> "wav" | "it" | "s3m" | "xm" | "mod" | "unknown"`.
 - `ufont.read_font(...) -> {"pages": [{"texture", "chars": [(u, v, w, h)]}], "chars_per_page", "remap"?, "remapped"?}`.
+- `uscript.decode_script(pkg, data, pos, mem_size) -> (end, Counter of tokens)`; readers for `Class` (with `defaults`), `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, every `*Property` (`refs` = type references).

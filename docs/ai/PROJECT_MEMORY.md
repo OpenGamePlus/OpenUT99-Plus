@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — script objects and bytecode
+
+- `tools/uscript.py`: classes, states, functions, structs, enums, consts, text buffers and property declarations, all byte-exact. Class objects have no leading property list; their defaults come last as a tagged list.
+- Skipping bytecode is impossible: the header's script size counts memory (4-byte references), disk uses compact indices. The decoder walks every expression; all 1.58 M tokens of the install land exactly on the declared size. 9,156 functions in `System/*.u`, 383 native.
+- Strings with a negative length are UTF-16 (third-party cache packages).
+
 ## 2026-11-10 — fonts
 
 - `tools/ufont.py`: pages of glyph rectangles plus characters-per-page; 469 (version 69) adds a code-point remap table and a flag. All 78 fonts byte-exact.
