@@ -14,7 +14,7 @@ Non-class script objects start with the tagged property list (normally just `Non
 |---|---|
 | Field | super (object ref), next (object ref) |
 | Struct | Field + script text (object ref, a `TextBuffer`), children (object ref, first member), friendly name (name), line i32, text position i32, script size u32 (**in-memory** bytes), bytecode |
-| State | Struct + probe mask u64, ignore mask u64, label table offset u16, state flags u32 |
+| State | Struct + probe mask u64, ignore mask u64, label table offset u16 (in-memory offset of the first label entry, just after the `0x0C` token; `0xFFFF` = none), state flags u32 (`0x2` = auto) |
 | Class | State + class flags u32, GUID (16 bytes), dependencies (compact count × (class ref, deep u32, script text CRC u32)), package imports (compact count × object ref), within (object ref), config name (name), default properties (tagged list) |
 
 ## Other script objects
@@ -73,7 +73,7 @@ The header's script size counts memory, where object references and names take 4
 
 ## Execution (VM)
 
-Engine: `engine/vm.*` ([ADR 0006](../architecture/adr/0006-unrealscript-execution.md)). A function is loaded into its in-memory form (references and names widened to 4-byte ints), so jump, case and skip offsets index it directly. All 20,052 retail functions load; 662 of their 50,236 parameters and locals have types the VM does not hold yet (structs other than Vector / Rotator, dynamic arrays).
+Engine: `engine/vm.*` ([ADR 0006](../architecture/adr/0006-unrealscript-execution.md)). A function is loaded into its in-memory form (references and names widened to 4-byte ints), so jump, case and skip offsets index it directly. All 20,052 retail functions and 996 states load; 27 of the 50,236 parameters and locals have types the VM does not hold yet (dynamic arrays, maps).
 
 | Behaviour | Evidence |
 |---|---|
@@ -86,11 +86,17 @@ Engine: `engine/vm.*` ([ADR 0006](../architecture/adr/0006-unrealscript-executio
 | Context `0x19` / class context `0x12`: object expr, u16 skip, u8 size, expr. The inner variable or call uses the context object; arguments and array indices are evaluated with the caller's self. A None context skips u16 bytes (counted after the size byte) and yields zero | `TestInfo.TestNullContext`; synthetic test |
 | Array element `0x1A`: index first, then the array (any variable, also inside a context) | retail `TestInfo.TestX` bytes; `TestInfo.temp` |
 | Static array dimension is a u16; retail goes up to 16,384 (`udemo.DemoPlaybackSpec.HideActors`) | sweep over all property declarations |
+| States: a State's `super` is its parent state (`extends`, or the same-named state of the super class); flag `0x2` marks `auto state`. Calls (`0x1B`) look in the current state and its parents first, then the class chain; `0x38` (global) skips the state | retail `TestInfo` states (`CCAA extends AA` → super `AA`); source of `Fan2`, `Chest` (`auto state`) |
+| Label table entries: name (u32 in memory) + code offset u32, ended by a name whose text is `None` (packages hold several `None` names) | all 996 retail states: every table offset follows a `0x0C` |
+| Function flag `0x8` = latent (`Sleep`, `FinishAnim`, `MoveTo`...): state code stops at the call and continues after it on a later tick | Engine native declarations |
+| `GotoState`: `EndState` in the old state, `BeginState` in the new one, code from the label (default `Begin`) of the state or its nearest parent state with labels; `'Auto'` picks the auto state | public documentation; order **unverified** |
 | Conversions `0x39`–`0x59` (e.g. `0x53` int → string, `0x55` float → string) | public UE1 documentation; `0x55` with 6 decimals and the others' text formats are **unverified** |
 
 Retail checks (`build/ut_script <UT99_DIR> Package.Class.Function [args]`): `Engine.Console.FormatFloat 1.2345` → `"1.23"`, `Botpack.TournamentScoreBoard.TwoDigitString 5` → `"05"`, and `Engine.TestInfo` `TestContinueWhile`, `TestContinueDoUntil`, `TestContinueFor`, `TestSwitch`, `TestOptionalOut` run to the end with every `assert` passing and the log their source text predicts; so do `TestStatic`, `TestQ`, `TestStructBools`, `TestX`, `TestNullContext`, `TestLimitor` and `PostBeginPlay`. `TestInfo.Tick` runs until `GetPropertyText` (not implemented).
 
-Not yet: states and labels, iterators, `new`, dynamic arrays, binary struct defaults (other than Vector / Rotator), engine natives (actors, spawning, timers).
+State sweep (`ut_script <UT99_DIR> --states`): all 1,604 classes spawn and enter their auto state when they have one (233); the 346 that stop do so only on engine natives not written yet: `SetCollision` 137, `SetPhysics` 113, `FinishAnim` 26, `PlayAnim` 16, `SetTimer` 15, `LoopAnim` 13, `RotRand` 10, `PlaySound` 8, a few others once.
+
+Not yet: iterators, `new`, dynamic arrays, binary struct defaults (other than Vector / Rotator), state `ignores`, engine natives (actors, spawning, timers).
 
 ## Numbers (retail `System/*.u`)
 

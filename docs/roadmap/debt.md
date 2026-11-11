@@ -17,7 +17,7 @@
 
 - Review minors (2026-11-11): C++ `read_properties` does not stop tag headers at the export limit (wrong output, no UB); `prop_*` accessors ignore the property's type and size; a corrupt dependency aborts a whole map load and failed loads are retried; `compare_engine.py` stops on a Python exception and ignores `ut_dump` exit codes; Python format readers that index bytes or call `struct` directly can still raise `IndexError` / `struct.error` (the sweep counts them as errors).
 
-- VM shortcuts (unverified against the original): integer and float division by zero give 0, float → int out of range gives 0, `~=` on floats uses 1e-4, `Caps` is ASCII only, `Rand` / `FRand` use a different generator; text formats of conversions to string; out-of-bounds array indices are clamped with a warning; instances have no numbered names; struct defaults other than Vector / Rotator and struct inheritance are not read.
+- VM shortcuts (unverified against the original): integer and float division by zero give 0, float → int out of range gives 0, `~=` on floats uses 1e-4, `Caps` is ASCII only, `Rand` / `FRand` use a different generator; text formats of conversions to string; out-of-bounds array indices are clamped with a warning; instances have no numbered names; struct defaults other than Vector / Rotator and struct inheritance are not read; state `ignores` (ignore mask) not applied; after `GotoState` from state code the new code starts on the next tick.
 
 - Engine draws mesh actors full bright, frame 0, no `PrePivot` or environment mapping; DXT / 469 compressed textures show a grey checker.
 

@@ -395,12 +395,16 @@ static void test_read_class() {
 // 7 Multiply_IntInt (native 144) + 8-10; 11 OrOr_BoolBool (native 132) + 12-14; 15 Or() bool + 16.
 // Or returns false || (true || native 0xF0()): the unbound native must be skipped by the short circuit.
 // 17 instance variable int X of T (default 5); 18 Get(): X = 3; return X * default.X; 20 Null(): return None.X * 4.
+// 22 latent native Sleep(float) (256); 24 auto state S: Get() returns 99; code Begin: X = 7; Sleep(1); X = 9; stop.
+// 27 Call(): return Get(), a virtual call that sees the state.
 static Package vm_package() {
     Package p;
     p.version = 69;
     p.names = {"None", "T", "Mul", "A", "B", "C", "ReturnValue", "Multiply_IntInt", "Function", "IntProperty",
-               "Core", "Class", "OrOr_BoolBool", "BoolProperty", "Or", "X", "Get", "Null"};
-    p.imports = {{"Core", "Class", 0, "Function"}, {"Core", "Class", 0, "IntProperty"}, {"Core", "Class", 0, "BoolProperty"}};
+               "Core", "Class", "OrOr_BoolBool", "BoolProperty", "Or", "X", "Get", "Null",
+               "Sleep", "Seconds", "FloatProperty", "S", "Begin", "State", "Call"};
+    p.imports = {{"Core", "Class", 0, "Function"}, {"Core", "Class", 0, "IntProperty"}, {"Core", "Class", 0, "BoolProperty"},
+                 {"Core", "Class", 0, "FloatProperty"}, {"Core", "Class", 0, "State"}};
     auto add = [&](int32_t cls, int32_t outer, const char* name, const Bytes& d) {
         p.exports.push_back({cls, 0, outer, name, 0, int32_t(d.size()), int32_t(p.data.size())});
         put(p.data, d);
@@ -456,6 +460,27 @@ static Package vm_package() {
     put(null, cindex(17)); null.push_back(0x2C); null.push_back(4); null.push_back(0x16);
     add(-1, 1, "Null", func(21, null, 15, 0, 0));
     add(-2, 20, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    add(-1, 1, "Sleep", func(23, {}, 0, 256, kFuncNative | kFuncLatent | 1));
+    add(-4, 22, "Seconds", prop(0, kParm));
+    Bytes code = {0x0F, 0x01};
+    put(code, cindex(17)); code.push_back(0x1D); put(code, int32_t(7));             // 0: X = 7
+    code.push_back(0x61); code.push_back(0x00); code.push_back(0x1E); put(code, 1.0f); code.push_back(0x16);  // 11: Sleep(1)
+    code.push_back(0x0F); code.push_back(0x01); put(code, cindex(17)); code.push_back(0x1D); put(code, int32_t(9));  // 19
+    code.push_back(0x08); code.push_back(0x0C);                                        // 30: stop; 31: label table
+    put(code, cindex(22)); put(code, uint32_t(0)); put(code, cindex(0)); put(code, uint32_t(0xFFFF));
+    Bytes st = cindex(0);
+    for (int i = 0; i < 5; i++) put(st, cindex(0));
+    put(st, int32_t(0)); put(st, int32_t(0)); put(st, uint32_t(48)); put(st, code);
+    put(st, uint64_t(0)); put(st, uint64_t(0)); put(st, uint16_t(32)); put(st, uint32_t(kStateAuto));
+    add(-5, 1, "S", st);
+    Bytes get99 = {0x04, 0x1D};
+    put(get99, int32_t(99));
+    add(-1, 24, "Get", func(26, get99, 6, 0, 0));
+    add(-2, 25, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    Bytes call = {0x04, 0x1B};
+    put(call, cindex(16)); call.push_back(0x16);
+    add(-1, 1, "Call", func(28, call, 7, 0, 0));
+    add(-2, 27, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
     return p;
 }
 
@@ -478,6 +503,19 @@ static void test_vm() {
     assert(self->vars[vm.object(p, 17)][0].i == 3 && vm.defaults(t)->vars[vm.object(p, 17)][0].i == 5);
     Value z = vm.call(vm.function(p, 20), self, none);
     assert(z.t == VT::Int && z.i == 0 && vm.log.back().find("accessed None") != std::string::npos);
+    const Function& call = vm.function(p, 27);
+    assert(vm.call(call, self, none).i == 15);                        // no state: the class's Get
+    assert(vm.goto_state(self, "Auto") && self->state == vm.object(p, 24));
+    assert(vm.call(call, self, none).i == 99);                        // the state's Get overrides it
+    Value& x = self->vars[vm.object(p, 17)][0];
+    vm.tick(self, 0.1f);
+    assert(x.i == 7 && self->code_active);                             // asleep after X = 7
+    vm.tick(self, 0.5f);
+    assert(x.i == 7);
+    vm.tick(self, 0.6f);
+    assert(x.i == 9 && !self->code_active);                            // woke after 1 s, ran to stop
+    assert(!vm.goto_state(self, "Missing") && vm.goto_state(self, "None") && !self->state);
+    assert(vm.call(call, self, none).i == 15);
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);

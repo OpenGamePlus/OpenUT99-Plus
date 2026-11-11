@@ -1,8 +1,12 @@
 // ut_script DIR Package.Class.Function [ARG...]   run one UnrealScript function in the VM and print its results
+// ut_script DIR --run Package.Class [TICKS]       spawn the class, enter its auto state, tick its state code (0.1 s)
+// ut_script DIR --states                          every class of System/*.u: auto state run for 30 ticks, outcomes
 // Arguments are given per parameter (int, float, bool True/False, string, name); out parameters are printed after.
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
+#include <map>
 #include <stdexcept>
 #include <string>
 
@@ -35,6 +39,52 @@ ut::Value parse(const ut::Local& l, const std::string& s) {
     return v;
 }
 
+int32_t find_class(const ut::Package& p, const std::string& name) {
+    for (size_t i = 0; i < p.exports.size(); i++)
+        if (p.exports[i].class_ref == 0 && p.exports[i].size > 0 && p.exports[i].name == name) return int32_t(i + 1);
+    return 0;
+}
+
+// Spawns cls, enters its auto state and ticks it; returns "" or the error that stopped it.
+std::string run_states(ut::Vm& vm, ut::Obj* cls, int ticks, bool* has_auto) {
+    try {
+        ut::Obj* o = vm.spawn(cls);
+        *has_auto = vm.goto_state(o, "Auto");
+        for (int i = 0; i < ticks && *has_auto; i++) vm.tick(o, 0.1f);
+        return "";
+    } catch (const std::exception& e) {
+        return e.what();
+    }
+}
+
+int states(ut::Vm& vm, ut::PackageSet& packages, const std::string& root) {
+    std::map<std::string, int> errors;  // message without the function name -> count
+    int classes = 0, autos = 0, failed = 0;
+    for (const auto& d : std::filesystem::directory_iterator(root + "/System")) {
+        if (d.path().extension() != ".u") continue;
+        const ut::Package* p = packages.get(d.path().stem().string());
+        if (!p) continue;
+        for (size_t i = 0; i < p->exports.size(); i++) {
+            if (p->exports[i].class_ref != 0 || p->exports[i].size == 0) continue;
+            classes++;
+            bool has_auto = false;
+            std::string e = run_states(vm, vm.object(*p, int32_t(i + 1)), 30, &has_auto);
+            autos += has_auto;
+            if (e.empty()) continue;
+            failed++;
+            size_t colon = e.find(": ");
+            errors[colon == std::string::npos ? e : e.substr(colon + 2)]++;
+        }
+    }
+    std::printf("%d classes, %d with an auto state, %d stopped by an error\n", classes, autos, failed);
+    std::multimap<int, std::string> top;
+    for (const auto& [e, n] : errors) top.emplace(-n, e);
+    int shown = 0;
+    for (const auto& [n, e] : top)
+        if (shown++ < 25) std::printf("%6d  %s\n", -n, e.c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -44,6 +94,25 @@ int main(int argc, char** argv) {
     }
     try {
         std::string root = argv[1], path = argv[2];
+        if (path == "--states" || path == "--run") {
+            ut::Vfs vfs(root, ut::read_ini(root + "/System/UnrealTournament.ini"));
+            ut::PackageSet packages(&vfs);
+            ut::Vm vm(&packages);
+            for (const char* n : {"Core", "Engine"})
+                if (const ut::Package* p = packages.get(n)) vm.bind_natives(*p);
+            if (path == "--states") return states(vm, packages, root);
+            std::string target = argc > 3 ? argv[3] : "";
+            size_t dot = target.find('.');
+            const ut::Package* p = dot == std::string::npos ? nullptr : packages.get(target.substr(0, dot));
+            int32_t cls = p ? find_class(*p, target.substr(dot + 1)) : 0;
+            if (!cls) throw std::runtime_error("class not found: " + target);
+            bool has_auto = false;
+            std::string e = run_states(vm, vm.object(*p, cls), argc > 4 ? std::atoi(argv[4]) : 30, &has_auto);
+            for (const std::string& line : vm.log) std::printf("%s\n", line.c_str());
+            if (!has_auto) std::printf("no auto state\n");
+            if (!e.empty()) throw std::runtime_error(e);
+            return 0;
+        }
         size_t a = path.find('.'), b = path.find('.', a + 1);
         if (a == std::string::npos || b == std::string::npos) throw std::runtime_error("expected Package.Class.Function");
         std::string pkg_name = path.substr(0, a), cls = path.substr(a + 1, b - a - 1), fn = path.substr(b + 1);

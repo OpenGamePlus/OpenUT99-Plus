@@ -233,12 +233,15 @@ bool is_property(const Package& p, const Export& e) {
 
 }  // namespace
 
-Function load_function(const Package& p, int32_t ref) {
+namespace {
+
+// Struct header and script of a Function or State; leaves r after the script.
+Function load_struct(const Package& p, int32_t ref, Reader& r) {
     if (ref <= 0 || size_t(ref) > p.exports.size()) throw std::runtime_error("function ref out of range");
     const Export& e = p.exports[size_t(ref - 1)];
     size_t end = 0;
     read_properties(p, e, &end);
-    Reader r(p.data, end);
+    r.pos = end;
     Function f;
     f.pkg = &p;
     f.ref = ref;
@@ -249,14 +252,34 @@ Function load_function(const Package& p, int32_t ref) {
     r.i32(), r.i32();   // line, text pos
     uint32_t size = r.u32();
     r.pos = skip_script(p, r.pos, size, &f.code);
+    for (size_t n = 0; child > 0; n++) {
+        if (size_t(child) > p.exports.size() || n > p.exports.size()) throw std::runtime_error("bad struct children");
+        Local l = read_local(p, child);
+        child = l.next;
+        if (is_property(p, p.exports[size_t(l.ref - 1)])) f.locals.push_back(l);
+    }
+    return f;
+}
+
+}  // namespace
+
+Function load_function(const Package& p, int32_t ref) {
+    Reader r(p.data);
+    Function f = load_struct(p, ref, r);
     f.native = r.u16();
     r.u8();  // operator precedence
     f.flags = r.u32();
-    for (size_t n = 0; child > 0; n++) {
-        if (size_t(child) > p.exports.size() || n > p.exports.size()) throw std::runtime_error("bad function children");
-        f.locals.push_back(read_local(p, child));
-        child = f.locals.back().next;
-    }
+    return f;
+}
+
+Function load_state(const Package& p, int32_t ref) {
+    Reader r(p.data);
+    Function f = load_struct(p, ref, r);
+    f.locals.clear();  // a state's children are its functions
+    r.u32(), r.u32(), r.u32(), r.u32();  // probe mask, ignore mask
+    f.label_table = r.u16();
+    f.state_flags = r.u32();
+    if (f.label_table != 0xFFFF && f.label_table >= f.code.size()) throw std::runtime_error("label table outside the code");
     return f;
 }
 
@@ -384,7 +407,9 @@ Obj* Vm::super_of(Obj* cls) {
     auto it = supers_.find(cls);
     if (it != supers_.end()) return it->second;
     const Export& e = cls->pkg->exports[size_t(cls->ref - 1)];
-    Obj* s = e.class_ref == 0 ? object(*cls->pkg, read_class(*cls->pkg, e).super_ref) : nullptr;
+    size_t end = size_t(e.offset);
+    if (e.class_ref != 0) read_properties(*cls->pkg, e, &end);  // states; class objects have no property list
+    Obj* s = object(*cls->pkg, Reader(cls->pkg->data, end).index());
     supers_[cls] = s;
     return s;
 }
@@ -487,12 +512,19 @@ void Vm::apply_defaults(Obj* cls, Obj* d) {
     }
 }
 
-const Function* Vm::find_virtual(Obj* cls, const std::string& name) {
-    auto key = std::make_pair(static_cast<const Obj*>(cls), lower(name));
+const Function* Vm::find_virtual(Obj* cls, Obj* state, const std::string& name) {
+    auto key = std::make_tuple(static_cast<const Obj*>(cls), static_cast<const Obj*>(state), lower(name));
     auto it = virtuals_.find(key);
     if (it != virtuals_.end()) return it->second;
     const Function* found = nullptr;
-    for (Obj* c = cls; c && !found; c = super_of(c))
+    int guard = 0;
+    for (Obj* c = state; c && !found && guard++ < 256; c = super_of(c))  // the state, then its parent states
+        for (size_t i = 0; i < c->pkg->exports.size() && !found; i++) {
+            const Export& e = c->pkg->exports[i];
+            if (e.package == c->ref && iequal(e.name, name) && object_name(*c->pkg, e.class_ref) == "Function")
+                found = &function(*c->pkg, int32_t(i + 1));
+        }
+    for (Obj* c = cls; c && !found && guard++ < 512; c = super_of(c))
         for (size_t i = 0; i < c->pkg->exports.size() && !found; i++) {
             const Export& e = c->pkg->exports[i];
             if (e.package == c->ref && iequal(e.name, name) && object_name(*c->pkg, e.class_ref) == "Function")
@@ -500,6 +532,108 @@ const Function* Vm::find_virtual(Obj* cls, const std::string& name) {
         }
     virtuals_[key] = found;
     return found;
+}
+
+Obj* Vm::find_state(Obj* cls, const std::string& name, bool autostate) {
+    for (Obj* c = cls; c; c = super_of(c))
+        for (size_t i = 0; i < c->pkg->exports.size(); i++) {
+            const Export& e = c->pkg->exports[i];
+            if (e.package != c->ref || object_name(*c->pkg, e.class_ref) != "State") continue;
+            Obj* st = object(*c->pkg, int32_t(i + 1));
+            if (autostate ? (state_code(st).state_flags & kStateAuto) != 0 : iequal(e.name, name)) return st;
+        }
+    return nullptr;
+}
+
+const Function& Vm::state_code(Obj* st) {
+    auto key = std::make_pair(st->pkg, st->ref);
+    auto it = functions_.find(key);
+    if (it == functions_.end()) it = functions_.emplace(key, load_state(*st->pkg, st->ref)).first;
+    return it->second;
+}
+
+namespace {
+
+// Offset of label in a state's label table; npos if absent. The header offset points at the first entry, just after
+// the 0x0C token; entries are name index u32 + code offset u32 (in-memory form), up to a name "None".
+size_t find_label(const Function& code, const std::string& label) {
+    if (code.label_table == 0xFFFF) return std::string::npos;
+    size_t at = code.label_table;
+    if (at == 0 || code.code[at - 1] != 0x0C) throw std::runtime_error(code.name + ": no label table at its offset");
+    for (;;) {
+        if (at + 8 > code.code.size()) throw std::runtime_error(code.name + ": label table runs past the code");
+        uint32_t n = 0, off = 0;
+        for (int i = 0; i < 4; i++) n |= uint32_t(code.code[at + size_t(i)]) << (8 * i);
+        for (int i = 0; i < 4; i++) off |= uint32_t(code.code[at + 4 + size_t(i)]) << (8 * i);
+        at += 8;
+        if (n >= code.pkg->names.size()) throw std::runtime_error("bad label name");
+        const std::string& name = code.pkg->names[n];
+        if (name == "None") return std::string::npos;
+        if (iequal(name, label)) {
+            if (off >= code.code.size()) throw std::runtime_error(code.name + ": label outside the code");
+            return off;
+        }
+    }
+}
+
+}  // namespace
+
+void Vm::event(Obj* o, const std::string& name) {
+    const Function* f = find_virtual(o->cls, o->state, name);
+    if (!f || (f->flags & kFuncNative)) return;
+    std::vector<Value> none;
+    call(*f, o, none);
+}
+
+bool Vm::goto_state(Obj* o, const std::string& name, const std::string& label) {
+    bool leave = iequal(name, "None") || name.empty();
+    Obj* st = leave ? nullptr : find_state(o->cls, name, iequal(name, "Auto"));
+    if (!leave && !st) {
+        if (!iequal(name, "Auto")) log.push_back("ScriptWarning: GotoState: no state " + name);  // no auto state is normal
+        return false;
+    }
+    int gen = ++o->state_gen;
+    o->code_active = false;
+    o->sleep = -1;
+    if (st != o->state) {
+        if (o->state) event(o, "EndState");
+        if (o->state_gen != gen) return true;  // EndState changed state itself
+        o->state = st;
+        if (st) event(o, "BeginState");
+        if (o->state_gen != gen) return true;
+    }
+    for (Obj* s = st; s; s = super_of(s)) {  // code of the state, or of the nearest parent state that has labels
+        const Function& code = state_code(s);
+        if (code.label_table == 0xFFFF) continue;
+        size_t at = find_label(code, label);
+        if (at != std::string::npos) o->code_state = s, o->state_pc = at, o->code_active = true;
+        break;
+    }
+    return true;
+}
+
+void Vm::tick(Obj* o, float dt) {
+    if (!o->code_active) return;
+    if (o->sleep >= 0) {
+        o->sleep -= dt;
+        if (o->sleep > 0) return;
+        o->sleep = -1;
+    }
+    const Function& code = state_code(o->code_state);
+    Frame fr{code, o, {}};
+    fr.pc = o->state_pc;
+    int gen = o->state_gen;
+    for (long steps = 0; fr.pc < code.code.size(); steps++) {
+        if (steps > 1000000) throw std::runtime_error(code.name + ": runaway loop in state code");
+        eval(fr, o);
+        if (o->state_gen != gen) return;  // GotoState: the new code runs from the next tick
+        if (fr.done) break;
+        if (o->sleep >= 0) {  // latent call: continue after it
+            o->state_pc = fr.pc;
+            return;
+        }
+    }
+    o->code_active = false;
 }
 
 void Vm::warn(const Frame& fr, const std::string& what) { log.push_back("ScriptWarning: " + fr.f.name + " " + what); }
@@ -742,12 +876,25 @@ Value Vm::eval(Frame& fr, Obj* ctx) {
         }
         case 0x16: return Value();
         case 0x17: { Value v = Value::of(VT::Object); v.o = fr.self; return v; }
-        case 0x1B: {
+        case 0x1B: case 0x38: {  // virtual call (the current state first), global call (class only)
             std::string n = fr.name();
             if (!ctx || !ctx->cls) throw std::runtime_error(fr.f.name + ": call to " + n + " without an object");
-            const Function* g = find_virtual(ctx->cls, n);
+            const Function* g = find_virtual(ctx->cls, t == 0x1B ? ctx->state : nullptr, n);
             if (!g) throw std::runtime_error(fr.f.name + ": no function " + n);
             return call_named(fr, ctx, *g);
+        }
+        case 0x0C:  // label table: only reached if code runs past its end
+            for (;;) {
+                std::string n = fr.name();
+                fr.i32();
+                if (n == "None") return Value();
+            }
+        case 0x0D: {  // goto label, in state code
+            std::string label = eval(fr, fr.self).s;
+            size_t at = fr.f.label_table == 0xFFFF ? std::string::npos : find_label(fr.f, label);
+            if (at == std::string::npos) throw std::runtime_error(fr.f.name + ": no label " + label);
+            fr.jump(at);
+            return Value();
         }
         case 0x1C: {
             const Function& g = function(*fr.f.pkg, fr.i32());
@@ -948,6 +1095,18 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
         for (Obj* c = self ? self->cls : nullptr; c && !r.i; c = super_of(c)) r.i = iequal(name_of(c), a[0]->s);
     };
     by_name_["classischildof"] = [this](Obj*, std::vector<Value*>& a, Value& r) { r.i = a[0]->o && is_a(a[0]->o, a[1]->o); };
+    by_name_["gotostate"] = [this](Obj* self, std::vector<Value*>& a, Value&) {
+        if (self) goto_state(self, a[0] ? a[0]->s : "None", a[1] ? a[1]->s : "Begin");
+    };
+    by_name_["isinstate"] = [this](Obj* self, std::vector<Value*>& a, Value& r) {
+        for (Obj* s = self ? self->state : nullptr; s && !r.i; s = super_of(s)) r.i = iequal(name_of(s), a[0]->s);
+    };
+    by_name_["getstatename"] = [this](Obj* self, std::vector<Value*>&, Value& r) {
+        r.s = self && self->state ? name_of(self->state) : "None";
+    };
+    NATIVE(Sleep) {  // latent: state code resumes once the time has passed (Sleep(0): next tick)
+        if (self) self->sleep = std::max(0.f, a[0]->f);
+    };
     // Log
     by_name_["log"] = [this](Obj*, std::vector<Value*>& a, Value&) {
         log.push_back((a[1] ? a[1]->s : std::string("ScriptLog")) + ": " + a[0]->s);

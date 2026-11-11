@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — VM states
+
+- States in the VM: dispatch through the current state and its parents, labels, `GotoState` (EndState / BeginState, `'Auto'`), latent `Sleep`, `tick`. `ut_script --states` is the phase C meter: all 1,604 classes enter their auto state (233 have one); the 346 that stop do so only on engine natives (`SetCollision`, `SetPhysics`, animation, timers).
+- Learned on retail data: the label table offset in the State header points at the first entry, one byte after the `0x0C` token (all 996 states); a State's `super` is its parent state; flag 0x2 = auto, function flag 0x8 = latent.
+- Next: an actor world (location, rotation, collision flags, physics none / falling), timers and the animation natives, driven by the sweep's ranking.
+
 ## 2026-11-11 — VM objects
 
 - Objects in the VM: one canonical `Obj` per package object (imports resolved), instances copy their class defaults (super's, then the tagged list; all 1,604 retail classes build), variables are keyed by their property declaration. Contexts (`a.b`), class contexts, structs, static arrays and casts work; 13 `TestInfo` self-tests now pass, `PostBeginPlay` runs to its end.

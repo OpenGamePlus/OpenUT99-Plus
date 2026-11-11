@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -37,6 +38,13 @@ struct Obj {
     Obj* cls = nullptr;            // instance: its class (a package object of a class export)
     Obj* defaults = nullptr;       // class object: its default object, built on first use
     std::map<const Obj*, std::vector<Value>> vars;  // property declaration -> elements
+    // States: the current state, and where its code continues (code of `code_state`, which may be a super state).
+    Obj* state = nullptr;
+    Obj* code_state = nullptr;
+    size_t state_pc = 0;
+    bool code_active = false;
+    float sleep = -1;    // latent Sleep: seconds left; < 0 = not sleeping
+    int state_gen = 0;   // bumped by every GotoState, so running code notices a state change
 };
 
 enum : uint32_t { kParm = 0x80, kOptionalParm = 0x10, kOutParm = 0x100, kSkipParm = 0x200, kReturnParm = 0x400 };
@@ -61,9 +69,13 @@ struct Function {
     uint32_t flags = 0;
     std::vector<Local> locals;  // declaration order: parameters, return value, locals
     std::vector<uint8_t> code;  // in-memory form (see skip_script)
+    uint16_t label_table = 0xFFFF;  // State: offset of the first label entry (after the 0x0C token); 0xFFFF = none
+    uint32_t state_flags = 0;       // State: 0x2 = auto
 };
 
 Function load_function(const Package& p, int32_t ref);  // ref: export of class Function
+Function load_state(const Package& p, int32_t ref);     // ref: export of class State; locals stay empty
+enum : uint32_t { kFuncLatent = 0x8, kStateAuto = 0x2 };
 
 class Vm {
 public:
@@ -78,7 +90,11 @@ public:
     Obj* object(const Package& p, int32_t ref);  // canonical object behind a reference (imports resolved); 0 -> nullptr
     Obj* spawn(Obj* cls);                        // new instance with the class defaults
     Obj* defaults(Obj* cls);                     // the class default object
-    Obj* super_of(Obj* cls);
+    Obj* super_of(Obj* cls);                     // super class, or parent state
+    // GotoState: EndState in the old state, BeginState in the new one, then its code runs from label. state "None"
+    // leaves every state, "Auto" picks the class's auto state. Returns false (and logs) if the state is unknown.
+    bool goto_state(Obj* o, const std::string& state, const std::string& label = "Begin");
+    void tick(Obj* o, float dt);  // runs state code until it stops, sleeps or changes state
     std::vector<std::string> log;  // Log() output and warnings, "Tag: text"
 
 private:
@@ -101,7 +117,10 @@ private:
     bool is_a(Obj* cls, const Obj* base);
     Value call_script(Frame& fr, Obj* target, const Function& f);
     Value call_named(Frame& fr, Obj* target, const Function& f);
-    const Function* find_virtual(Obj* cls, const std::string& name);
+    const Function* find_virtual(Obj* cls, Obj* state, const std::string& name);  // state first, unless nullptr
+    Obj* find_state(Obj* cls, const std::string& name, bool autostate);
+    const Function& state_code(Obj* st);
+    void event(Obj* o, const std::string& name);  // calls a parameterless script function if it exists
     const Local& decl(Obj* prop);
     Value zero(const Package& p, const Local& l);
     void apply_defaults(Obj* cls, Obj* d);
@@ -116,7 +135,7 @@ private:
     std::map<const Obj*, Local> decls_;
     std::map<const Obj*, Obj*> supers_;
     std::map<const Obj*, std::vector<std::string>> struct_names_;
-    std::map<std::pair<const Obj*, std::string>, const Function*> virtuals_;
+    std::map<std::tuple<const Obj*, const Obj*, std::string>, const Function*> virtuals_;
     int depth_ = 0;
 };
 
