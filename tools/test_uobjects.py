@@ -11,17 +11,17 @@ PROPS = cindex(1) + bytes([0x22]) + (7).to_bytes(4, "little") + cindex(0)  # Hea
 
 
 @uobjects.register("Thing")
-def _thing(pkg, data, export, pos):
+def _thing(pkg, data, export, pos, props):
     return data[pos], pos + 1  # one byte of class data
 
 
 @uobjects.register("Broken")
-def _broken(pkg, data, export, pos):
+def _broken(pkg, data, export, pos, props):
     raise ValueError("bad")
 
 
 @uobjects.register("Short")
-def _short(pkg, data, export, pos):
+def _short(pkg, data, export, pos, props):
     return struct.unpack_from("<I", data, len(data)), pos  # reads past the end
 
 

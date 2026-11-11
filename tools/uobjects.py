@@ -14,7 +14,7 @@ import sys
 from upkg import object_name, parse
 from uprops import EXTENSIONS, read_properties
 
-READERS = {}  # class name -> reader(pkg, data, export, pos) -> (value, end)
+READERS = {}  # class name -> reader(pkg, data, export, pos, props) -> (value, end)
 OUTCOMES = ("exact", "leftover", "error", "noreader")
 
 
@@ -37,7 +37,7 @@ def read_object(pkg, data, export):
     value = None
     limit = export["offset"] + export["size"]
     if end < limit and cls in READERS:
-        value, end = READERS[cls](pkg, data, export, end)
+        value, end = READERS[cls](pkg, data, export, end, props)
     return {"props": props, "value": value, "end": end}
 
 
@@ -106,4 +106,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    import uobjects  # readers register into the importable module, not into __main__
+    uobjects.main(sys.argv)
