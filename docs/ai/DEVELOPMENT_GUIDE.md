@@ -3,7 +3,7 @@
 ## Workflow for a new format
 
 1. Survey: dump samples to `out/` (git-ignored) or a scratch dir, inventory structure.
-2. Write the reader in `tools/<format>.py` with a synthetic-data test in `tools/test_<format>.py`.
+2. Write the reader in `tools/u<format>.py` (registered with `uobjects.register`) with a synthetic-data test in `tools/test_<format>.py`.
 3. Verify locally against every matching object in `<UT99_DIR>`; record the counts in the spec.
 4. Write `docs/formats/<format>.md`; mark anything not verified; update [coverage.md](../formats/coverage.md).
 5. Update SYSTEM_SUMMARY and add a PROJECT_MEMORY stage.
@@ -12,7 +12,7 @@
 ## Quality bar
 
 - Tests and doc checks from the [SYSTEM_SUMMARY commands](SYSTEM_SUMMARY.md#commands) pass.
-- A reader change still parses every retail package: `python3 tools/uprops.py --sweep <UT99_DIR>` reports the same counts as the specs, "classes with both: none".
+- A reader change still parses every retail package: `python3 tools/uprops.py --sweep <UT99_DIR>` reports the same counts as the specs, "classes with both: none"; `python3 tools/uobjects.py --sweep <UT99_DIR>` shows no `leftover` or `error` for a class marked exact in coverage.
 
 ## Commits
 
