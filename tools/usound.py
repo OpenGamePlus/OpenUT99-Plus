@@ -7,13 +7,14 @@ Spec: docs/formats/sound.md
 import sys
 
 from upkg import Reader, lazy_bytes, parse
+from upkg import name as name_of
 from uobjects import read_object, register
 
 
 @register("Sound", "Music")
 def read_sound(pkg, data, export, pos, props):
     r = Reader(data, pos)
-    fmt = pkg["names"][r.index()]
+    fmt = name_of(pkg, r.index())
     blob = lazy_bytes(r, pkg["version"])
     return {"format": fmt, "data": blob}, r.pos
 

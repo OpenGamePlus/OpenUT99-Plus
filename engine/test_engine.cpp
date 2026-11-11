@@ -2,6 +2,7 @@
 #include <cassert>
 #include <type_traits>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -68,7 +69,7 @@ static void test_compact_index() {
 }
 
 // Same package as tools/test_upkg.py make_package().
-static Bytes make_package() {
+static Bytes make_package(int32_t export_offset = 1000) {
     const char* names[] = {"Core", "Class", "Package", "MyActor"};
     Bytes name_table, imports, exports;
     for (const char* n : names) {
@@ -79,7 +80,7 @@ static Bytes make_package() {
     put(imports, cindex(0)); put(imports, cindex(2)); put(imports, int32_t(0)); put(imports, cindex(0));
     put(imports, cindex(0)); put(imports, cindex(1)); put(imports, int32_t(-1)); put(imports, cindex(1));
     put(exports, cindex(-2)); put(exports, cindex(0)); put(exports, int32_t(0)); put(exports, cindex(3));
-    put(exports, uint32_t(0)); put(exports, cindex(4)); put(exports, cindex(1000));
+    put(exports, uint32_t(0)); put(exports, cindex(4)); put(exports, cindex(export_offset));
     uint32_t no = 36 + 16 + 4 + 8, io = no + uint32_t(name_table.size()), eo = io + uint32_t(imports.size());
     Bytes b;
     put(b, uint32_t(0x9E2A83C1)); put(b, uint16_t(69)); put(b, uint16_t(0)); put(b, uint32_t(1));
@@ -102,6 +103,9 @@ static void test_parse_package() {
     assert(object_name(p, e.class_ref) == "Class");
     Bytes bad(64, 0);
     assert(throws([&] { parse_package(bad); }));
+    assert(throws([&] { parse_package(make_package(-1)); }));  // negative offset must not wrap past the check
+    Bytes small(4, 0);
+    assert(throws([&] { Reader(small, SIZE_MAX).u8(); }));     // position past the end must not wrap in need()
 }
 
 static void test_string_utf16() {
@@ -297,6 +301,31 @@ static void test_luxels() {
     assert(shadow_bit(m, m.lightmaps[0], 0, 0, 0) && !shadow_bit(m, m.lightmaps[0], 0, 1, 0));
     assert(shadow_bit(m, m.lightmaps[0], 0, 2, 0) && shadow_bit(m, m.lightmaps[0], 0, 1, 1));
     assert(!shadow_bit(m, m.lightmaps[0], 1, 0, 0));
+    m.lightmaps[0].light_actors = -1;  // retail: no lights for this lightmap
+    assert(lightmap_lights(m, m.lightmaps[0]) == 0);
+}
+
+static void test_validate_model() {
+    validate_model(lit_floor());  // valid
+    auto bad = [](void (*mutate)(Model&)) {
+        Model m = lit_floor();
+        mutate(m);
+        return throws([&] { validate_model(m); });
+    };
+    assert(bad([](Model& m) { m.lightmaps[0].uclamp = -1; }));
+    assert(bad([](Model& m) { m.lightmaps[0].vclamp = 1 << 20; }));
+    assert(bad([](Model& m) { m.lightmaps[0].light_actors = 99; }));
+    assert(bad([](Model& m) { m.lightmaps[0].data_offset = 3; }));  // 2 lights x 2 rows x 1 byte do not fit after offset 3
+    assert(bad([](Model& m) { m.lightmaps[0].uscale = 0; }));
+    assert(bad([](Model& m) { m.surfs[0].normal = 7; }));
+    assert(bad([](Model& m) { m.surfs[0].light_map = 5; }));
+    {  // 8 lights, 2 luxels wide: 8 x 1 byte per row x 2 rows = 16 bytes (not 8 x 9 / 8 x 2 = 18)
+        Model m = lit_floor();
+        m.lightmaps[0].uclamp = 2;
+        m.lights = {-1, -2, -3, -4, -5, -6, -7, -8, 0};
+        m.light_bits.assign(16, 0);
+        validate_model(m);
+    }
 }
 
 static void test_light_colour() {
@@ -312,6 +341,7 @@ static void test_atlas() {
     assert(a.place(10, 4, &x0, &y0) && a.place(10, 4, &x1, &y1));
     assert(x0 == 0 && y0 == 0 && y1 > y0);  // second does not fit on the first shelf (10 + 10 > 16)
     assert(!a.place(17, 1, &x1, &y1));
+    assert(!a.place(-1, 1, &x1, &y1) && !a.place(1, 0, &x1, &y1));  // never moves the shelf backwards
 }
 
 // Same script as tools/test_uscript.py: Health = 5; Tick(1); native 112(); return; label table.
@@ -333,6 +363,9 @@ static void test_skip_script() {
     assert(throws([&] { skip_script(p, 0, 3); }));  // size does not land on a token boundary
     p.data = {0x03};
     assert(throws([&] { skip_script(p, 0, 1); }));  // unknown token
+    p.data.assign(300, 0x04);  // 300 nested returns: deeper than any real script, must not recurse unbounded
+    p.data.push_back(0x0B);
+    assert(throws([&] { skip_script(p, 0, 301); }));
 }
 
 // Class object: struct header + script, state fields, class fields, defaults (Health=100).
@@ -364,6 +397,7 @@ int main() {
     test_read_class();
     test_unpack_vert();
     test_luxels();
+    test_validate_model();
     test_light_colour();
     test_atlas();
     test_resolve_import();

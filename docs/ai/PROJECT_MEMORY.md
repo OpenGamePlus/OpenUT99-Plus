@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — review fixes: untrusted package data
+
+- A fresh review plus an ASan/UBSan build found memory errors on retail and crafted data: lightmaps with `first light = −1` read before the light list (retail, DM-Morpheus), negative export offsets wrapped past the bounds check, lightmap fields and surface normals were unvalidated, bytecode recursion was unbounded, and a dangling property pointer in the actor lookup. All fixed with tests; `validate_model` now guards every index the engine follows.
+- Python readers now raise `ValueError` for truncated data and bad name indices (shared helpers in `upkg.py`). Deferred minors are in the plan ledger, not in debt.md.
+
 ## 2026-11-10 — mesh actors
 
 - The viewer draws actors with LodMeshes: properties come from the actor, then its class defaults up the super chain (C++ class reader with the bytecode walker; class defaults and meshes match Python on all packages). Pickups, decorations and the EOL_Statues trophies stand upright and textured.

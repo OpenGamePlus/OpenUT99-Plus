@@ -11,9 +11,11 @@ import struct
 import sys
 
 from upkg import Reader, parse
+from upkg import name as name_of
 from uobjects import class_name, register
 from uprops import EXTENSIONS, read_properties
 
+MAX_DEPTH = 256
 FUNC_NET = 0x40
 CPF_NET = 0x20
 # Property class -> number of object references after the common declaration.
@@ -26,7 +28,7 @@ class _Script:
     """Walks bytecode on disk while counting its in-memory size (object and name references are 4 bytes)."""
 
     def __init__(self, pkg, data, pos):
-        self.pkg, self.r, self.mem = pkg, Reader(data, pos), 0
+        self.pkg, self.r, self.mem, self.depth = pkg, Reader(data, pos), 0, 0
         self.tokens = collections.Counter()
 
     def byte(self):
@@ -54,6 +56,15 @@ class _Script:
             pass
 
     def expr(self):
+        if self.depth >= MAX_DEPTH:  # crafted bytecode must not exhaust the stack
+            raise ValueError("bytecode nested too deeply")
+        self.depth += 1
+        try:
+            return self._expr()
+        finally:
+            self.depth -= 1
+
+    def _expr(self):
         t = self.byte()
         self.tokens[t] += 1
         if t in (0x00, 0x01, 0x02, 0x20, 0x21, 0x29):      # variables, object/name const, native parm
@@ -75,7 +86,7 @@ class _Script:
             while True:
                 name = self.ref()
                 self.raw(4)
-                if self.pkg["names"][name] == "None":
+                if name_of(self.pkg, name) == "None":
                     break
         elif t in (0x0F, 0x10, 0x14, 0x1A):                 # let, dyn array element, let bool, array element
             self.expr()
@@ -143,7 +154,7 @@ def _field(r):
 def _struct(pkg, data, pos):
     r = Reader(data, pos)
     s = _field(r)
-    s.update(script_text=r.index(), children=r.index(), friendly_name=pkg["names"][r.index()],
+    s.update(script_text=r.index(), children=r.index(), friendly_name=name_of(pkg, r.index()),
              line=r.i32(), text_pos=r.i32(), script_size=r.u32())
     end, s["tokens"] = decode_script(pkg, data, r.pos, s["script_size"])
     r.pos = end
@@ -194,7 +205,7 @@ def read_class(pkg, data, export, pos, props):
     s["dependencies"] = [(r.index(), r.u32(), r.u32()) for _ in range(r.index())]  # class, deep, script text CRC
     s["package_imports"] = [r.index() for _ in range(r.index())]
     s["within"] = r.index()
-    s["config_name"] = pkg["names"][r.index()]
+    s["config_name"] = name_of(pkg, r.index())
     limit = export["offset"] + export["size"]
     s["defaults"], end = read_properties(pkg, data, {"offset": r.pos, "size": limit - r.pos, "flags": 0})
     return s, end
@@ -206,7 +217,7 @@ def read_property(pkg, data, export, pos, props, refs):
     d["array_dim"], d["element_size"] = struct.unpack_from("<HH", data, r.pos)
     r.pos += 4
     d["flags"] = r.u32()
-    d["category"] = pkg["names"][r.index()]
+    d["category"] = name_of(pkg, r.index())
     if d["flags"] & CPF_NET:
         (d["rep_offset"],) = struct.unpack_from("<H", data, r.pos)
         r.pos += 2
@@ -240,7 +251,7 @@ def read_const(pkg, data, export, pos, props):
 def read_enum(pkg, data, export, pos, props):
     r = Reader(data, pos)
     e = _field(r)
-    e["names"] = [pkg["names"][r.index()] for _ in range(r.index())]
+    e["names"] = [name_of(pkg, r.index()) for _ in range(r.index())]
     return e, r.pos
 
 

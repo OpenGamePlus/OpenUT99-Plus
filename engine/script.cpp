@@ -7,10 +7,13 @@ namespace ut {
 
 namespace {
 
+const int kMaxDepth = 256;
+
 struct Walker {
     const Package& p;
     Reader r;
     uint64_t mem = 0;
+    int depth = 0;
 
     uint8_t byte() {
         mem += 1;
@@ -34,6 +37,13 @@ struct Walker {
         }
     }
     uint8_t expr() {
+        struct Depth {  // crafted bytecode must not overflow the stack
+            int& d;
+            explicit Depth(int& v) : d(v) {
+                if (++d > kMaxDepth) throw std::runtime_error("bytecode nested too deeply");
+            }
+            ~Depth() { --d; }
+        } guard(depth);
         uint8_t t = byte();
         switch (t) {
             case 0x00: case 0x01: case 0x02: case 0x20: case 0x21: case 0x29: ref(); break;

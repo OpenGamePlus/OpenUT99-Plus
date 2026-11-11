@@ -44,7 +44,7 @@ def read_object(pkg, data, export):
 def outcome(pkg, data, export):
     try:
         end = read_object(pkg, data, export)["end"]
-    except (ValueError, IndexError, KeyError, struct.error):
+    except (ValueError, IndexError, struct.error):  # malformed data; a KeyError would be a reader bug and surfaces
         return "error"
     limit = export["offset"] + export["size"]
     if end == limit:

@@ -1,5 +1,6 @@
 #include "level.h"
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
@@ -91,21 +92,34 @@ Model read_model(const Package& p, const Export& e) {
     Model m;
     read_model_into(r, m);
     if (r.pos != size_t(e.offset) + size_t(e.size)) throw std::runtime_error("model size mismatch");
+    validate_model(m);
+    return m;
+}
+
+static bool in(int32_t i, size_t n) { return i >= 0 && size_t(i) < n; }
+
+void validate_model(const Model& m) {
     for (const Surf& s : m.surfs)
-        if (s.base < 0 || size_t(s.base) >= m.points.size() || s.texture_u < 0 || size_t(s.texture_u) >= m.vectors.size() ||
-            s.texture_v < 0 || size_t(s.texture_v) >= m.vectors.size())
+        if (!in(s.base, m.points.size()) || !in(s.normal, m.vectors.size()) || !in(s.texture_u, m.vectors.size()) ||
+            !in(s.texture_v, m.vectors.size()) || (s.light_map != -1 && !in(s.light_map, m.lightmaps.size())))
             throw std::runtime_error("surface index out of range");
     for (const Node& n : m.nodes)
-        if (n.surf < 0 || size_t(n.surf) >= m.surfs.size() || n.vert_pool < 0 ||
-            size_t(n.vert_pool) + n.num_vertices > m.verts.size())
+        if (!in(n.surf, m.surfs.size()) || n.vert_pool < 0 || size_t(n.vert_pool) + n.num_vertices > m.verts.size())
             throw std::runtime_error("node index out of range");
     // Level models carry vert entries past the points array; no node references them (checked on all retail maps).
     for (const Node& n : m.nodes)
-        for (int i = 0; i < n.num_vertices; i++) {
-            int32_t pt = m.verts[size_t(n.vert_pool + i)].point;
-            if (pt < 0 || size_t(pt) >= m.points.size()) throw std::runtime_error("node vertex out of range");
-        }
-    return m;
+        for (int i = 0; i < n.num_vertices; i++)
+            if (!in(m.verts[size_t(n.vert_pool + i)].point, m.points.size())) throw std::runtime_error("node vertex out of range");
+    for (const LightMap& l : m.lightmaps) {
+        if (l.uclamp < 1 || l.uclamp > 2048 || l.vclamp < 1 || l.vclamp > 2048 || !(l.uscale > 0) || !(l.vscale > 0) ||
+            l.data_offset < 0 || (l.light_actors != -1 && !in(l.light_actors, m.lights.size())))
+            throw std::runtime_error("lightmap out of range");
+        size_t lights = 0;
+        for (size_t i = size_t(std::max(l.light_actors, 0)); l.light_actors >= 0 && i < m.lights.size() && m.lights[i] != 0; i++) lights++;
+        size_t bytes = lights * (size_t(l.uclamp + 7) / 8) * size_t(l.vclamp);
+        if (size_t(l.data_offset) > m.light_bits.size() || bytes > m.light_bits.size() - size_t(l.data_offset))
+            throw std::runtime_error("lightmap bits outside the light data");
+    }
 }
 
 size_t model_end(const Package& p, const Export& e) {

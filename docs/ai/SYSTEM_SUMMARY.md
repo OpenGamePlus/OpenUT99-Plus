@@ -55,7 +55,7 @@ tools/
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
-| Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers match Python on all 396 packages; level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load |
+| Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers agree with Python on all 396 packages (`compare_engine.py` compares counts and end offsets per object, not every value); level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load |
 | Network | not started |
 
 ## Commands
@@ -91,7 +91,7 @@ python3 tools/umesh.py FILE LODMESH --obj out/x.obj [FRAME]
 - `uscript.decode_script(pkg, data, pos, mem_size) -> (end, Counter of tokens)`; readers for `Class` (with `defaults`), `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, every `*Property` (`refs` = type references).
 - `umodel.read_model(...)` → `vectors`, `points`, `nodes`, `surfs`, `verts`, `zones`, `lightmaps`, `light_bits`, `lights`, ... (names as in `docs/formats/level.md`); `umodel.read_level(...)` → `actors`, `url`, `model`, `reach_specs`, ...; `umodel.read_polys(...)` → list of polygons.
 - `umesh.read_mesh / read_lod_mesh / read_skeletal_mesh / read_animation`; `umesh.unpack_vert(u32) -> (x, y, z)`; `umesh.lod_mesh_obj(mesh, frame) -> str`.
-- C++ `ut::load_package(path) -> Package` (`names`, `imports`, `exports`, `data`), `ut::read_properties(pkg, export, &end) -> vector<Property>` (raw `value_pos`/`size`; decode with `prop_int`, `prop_float`, `prop_ref`, `prop_byte`, `prop_string`, `prop_vector`). Throws `std::runtime_error` on bad data; exports outside the file are rejected at load.
+- C++ `ut::load_package(path) -> Package` (`names`, `imports`, `exports`, `data`), `ut::read_properties(pkg, export, &end) -> vector<Property>` (raw `value_pos`/`size`; decode with `prop_int`, `prop_float`, `prop_ref`, `prop_byte`, `prop_string`, `prop_vector`). Package data is untrusted (cache packages come from servers): every read is bounds-checked, exports outside the file are rejected at load, Model indices and lightmap fields are validated (`ut::validate_model`), bytecode nesting is capped at 256; bad data throws `std::runtime_error`. Checked with an ASan/UBSan build on all retail maps.
 - `uini.parse(text) -> {section: {key: [values]}}`, `uini.package_paths(root, ini) -> {lower name: path}`; C++ `ut::parse_ini`, `ut::read_ini`, `ut::Vfs(root, ini).find(name)`.
 - C++ `ut::PackageSet(&vfs).resolve(pkg, ref) -> Object{package, exp}` (imports by name + class + group path); `ut::load_scene(set, map) -> Scene{batches, starts}`; `ut::Renderer(scene).draw(cam, w, h)`.
 - C++ `ut::skip_script(pkg, pos, mem_size)`, `ut::read_class(pkg, export) -> ClassInfo{super_ref, defaults}`, `ut::read_lod_mesh(pkg, export) -> LodMesh` (frame 0, faces, wedges, materials, textures, scale, origin, rot_origin).

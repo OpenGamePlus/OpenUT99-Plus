@@ -5,6 +5,12 @@ from upkg import Reader, lazy_bytes
 from uobjects import register
 
 
+def _name(names, i):
+    if not 0 <= i < len(names):
+        raise ValueError(f"name index {i} out of range")
+    return names[i]
+
+
 def unpack_vert(v):
     """FMeshVert: X 11 bits, Y 11 bits, Z 10 bits, all signed."""
     x, y, z = v & 0x7FF, (v >> 11) & 0x7FF, v >> 22
@@ -31,9 +37,9 @@ def _prim(r):
 
 
 def _seq(r, names):
-    s = {"name": names[r.index()], "group": names[r.index()]}
+    s = {"name": _name(names, r.index()), "group": _name(names, r.index())}
     s["start"], s["frames"] = _unpack(r, "ii")
-    s["notifys"] = _array(r, lambda r: (_unpack(r, "f")[0], names[r.index()]))
+    s["notifys"] = _array(r, lambda r: (_unpack(r, "f")[0], _name(names, r.index())))
     (s["rate"],) = _unpack(r, "f")
     return s
 
@@ -80,7 +86,7 @@ def read_lod_mesh(pkg, data, export, pos, props):
 
 
 def _bone(r, names):
-    b = {"name": names[r.index()]}
+    b = {"name": _name(names, r.index())}
     (b["flags"],) = _unpack(r, "I")
     b["orientation"], b["position"] = _unpack(r, "4f"), _unpack(r, "3f")
     b["length"], b["size_x"], b["size_y"], b["size_z"], b["children"], b["parent"] = _unpack(r, "4fii")
@@ -121,7 +127,7 @@ def _move(r):
 @register("Animation")
 def read_animation(pkg, data, export, pos, props):
     r, names = Reader(data, pos), pkg["names"]
-    a = {"ref_bones": _array(r, lambda r: (names[r.index()],) + _unpack(r, "Ii"))}  # name, flags, parent
+    a = {"ref_bones": _array(r, lambda r: (_name(names, r.index()),) + _unpack(r, "Ii"))}  # name, flags, parent
     a["moves"] = _array(r, _move)
     a["anim_seqs"] = _array(r, lambda r: _seq(r, names))
     return a, r.pos

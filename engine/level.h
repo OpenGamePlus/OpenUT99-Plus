@@ -58,7 +58,9 @@ enum : uint32_t {
     PF_TwoSided = 0x100, PF_Unlit = 0x400000, PF_Portal = 0x4000000,
 };
 
-Model read_model(const Package& p, const Export& e);  // also returns *end-checked data; throws on bad data
+Model read_model(const Package& p, const Export& e);  // validated with validate_model; throws on bad data
+// Throws std::runtime_error unless every index the engine follows is in range (package data is untrusted).
+void validate_model(const Model& m);
 Level read_level(const Package& p, const Export& e);
 size_t model_end(const Package& p, const Export& e);  // offset after the Model data (for cross-checks)
 

@@ -35,6 +35,6 @@
 ## Rules
 
 - Tools: Python stdlib only; a reader never writes into `<UT99_DIR>`.
-- Format readers depend only on lower-level readers (every package format sits on `upkg`); no cycles. A class-data reader registers itself with `uobjects.register(<class name>)` and never imports `uobjects` for anything else.
+- Format readers depend only on lower-level readers (every package format sits on `upkg`); no cycles. A class-data reader registers itself with `uobjects.register(<class name>)`; besides that it may import `uobjects.read_object` only for its command-line entry point.
 - Engine: format modules depend on std only or on other format modules; nothing below `render` calls OpenGL; only executables touch SDL.
 - No module embeds game data or paths to a real install ([ADR 0001](adr/0001-no-game-data.md)).

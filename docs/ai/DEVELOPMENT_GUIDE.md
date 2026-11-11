@@ -12,7 +12,8 @@
 ## Quality bar
 
 - Tests, engine build without warnings, engine tests and doc checks from the [SYSTEM_SUMMARY commands](SYSTEM_SUMMARY.md#commands) pass.
-- An engine reader change: `compare_engine.py` still reports 0 differences.
+- An engine reader change: `compare_engine.py` still reports 0 differences, and the sanitizer build passes on all maps: `cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" && cmake --build build-asan && build-asan/test_engine && build-asan/ut_mapview <UT99_DIR> --check` (slow: tens of minutes).
+- Package data is untrusted: C++ readers validate every file-provided index or size before using it; Python readers raise `ValueError` (the `Reader`, `lazy_bytes` and `name` helpers in `upkg.py` do it for you).
 - A reader change still parses every retail package: `python3 tools/uprops.py --sweep <UT99_DIR>` reports the same counts as the specs, "classes with both: none"; `python3 tools/uobjects.py --sweep <UT99_DIR>` shows no `leftover` or `error` for a class marked exact in coverage.
 
 ## Commits

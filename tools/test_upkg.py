@@ -1,7 +1,7 @@
 import struct
 import unittest
 
-from upkg import Reader, TAG, lazy_bytes, object_name, parse
+from upkg import Reader, TAG, lazy_bytes, name, object_name, parse
 
 
 def cindex(v):
@@ -76,6 +76,20 @@ class UpkgTest(unittest.TestCase):
         r = Reader(cindex(-3) + "hé".encode("utf-16-le") + b"\0\0" + b"x")
         self.assertEqual(r.string(), "hé")
         self.assertEqual(r.pos, 1 + 6)
+
+    def test_truncated_data_raises_value_error(self):
+        for read in (lambda: Reader(b"\x00").u32(), lambda: Reader(b"\x40").index(),
+                     lambda: Reader(cindex(5) + b"ab").string(),
+                     lambda: lazy_bytes(Reader(cindex(10) + b"abc"), 61)):
+            with self.assertRaises(ValueError):
+                read()
+
+    def test_name_index_checked(self):
+        pkg = {"names": ["None", "A"]}
+        self.assertEqual(name(pkg, 1), "A")
+        for bad in (-1, 2):
+            with self.assertRaises(ValueError):
+                name(pkg, bad)
 
     def test_bad_tag(self):
         with self.assertRaises(ValueError):

@@ -24,9 +24,12 @@ public:
     explicit Props(PackageSet& set) : set_(set) {}
     struct Found { const Package* pkg = nullptr; const Property* prop = nullptr; };
     Found find(Object actor, const std::string& name, int32_t index = 0) {
-        size_t end = 0;
-        own_ = read_properties(*actor.package, *actor.exp, &end);
-        for (const Property& p : own_)
+        auto own = own_.find(actor.exp);
+        if (own == own_.end()) {
+            size_t end = 0;
+            own = own_.emplace(actor.exp, read_properties(*actor.package, *actor.exp, &end)).first;
+        }
+        for (const Property& p : own->second)
             if (p.name == name && p.index == index) return {actor.package, &p};
         Object cls = set_.resolve(*actor.package, actor.exp->class_ref);
         for (int depth = 0; cls.exp && cls.exp->class_ref == 0 && depth < 32; depth++) {
@@ -41,7 +44,7 @@ public:
 
 private:
     PackageSet& set_;
-    std::vector<Property> own_;  // shortcut: re-read per lookup; cache when actors are drawn per frame
+    std::map<const Export*, std::vector<Property>> own_;  // per actor; returned pointers stay valid for Props' lifetime
     std::map<const Export*, ClassInfo> classes_;
 };
 

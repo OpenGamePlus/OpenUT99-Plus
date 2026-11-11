@@ -14,26 +14,35 @@ class Reader:
     def __init__(self, data, pos=0):
         self.data, self.pos = data, pos
 
+    def need(self, n):
+        if n < 0 or self.pos < 0 or self.pos + n > len(self.data):
+            raise ValueError("read past end of data")
+
     def u32(self):
+        self.need(4)
         (v,) = struct.unpack_from("<I", self.data, self.pos)
         self.pos += 4
         return v
 
     def i32(self):
+        self.need(4)
         (v,) = struct.unpack_from("<i", self.data, self.pos)
         self.pos += 4
         return v
 
+    def byte(self):
+        self.need(1)
+        self.pos += 1
+        return self.data[self.pos - 1]
+
     def index(self):
         """Compact index: byte 0 = sign(7) more(6) value(5..0); next bytes = more(7) value(6..0)."""
-        first = b = self.data[self.pos]
-        self.pos += 1
+        first = b = self.byte()
         v, shift, more = b & 0x3F, 6, b & 0x40
         while more:
             if shift > 27:
                 raise ValueError("compact index longer than 5 bytes")
-            b = self.data[self.pos]
-            self.pos += 1
+            b = self.byte()
             v |= (b & 0x7F) << shift
             shift, more = shift + 7, b & 0x80
         return -v if first & 0x80 else v
@@ -41,6 +50,7 @@ class Reader:
     def string(self):
         """Length-prefixed string (count includes the NUL); a negative count means UTF-16 characters."""
         n = self.index()
+        self.need(abs(n) * (2 if n < 0 else 1))
         if n < 0:
             s = self.data[self.pos:self.pos - 2 * n]
             self.pos -= 2 * n
@@ -50,10 +60,18 @@ class Reader:
         return s.rstrip(b"\0").decode("latin-1")
 
 
+def name(pkg, i):
+    """Name table entry; raises ValueError for an index outside the table."""
+    if not 0 <= i < len(pkg["names"]):
+        raise ValueError(f"name index {i} out of range")
+    return pkg["names"][i]
+
+
 def lazy_bytes(r, version, item_size=1):
     """Lazy array: [u32 file position past the data, version >= 62], compact item count, items (raw bytes)."""
     skip = r.u32() if version >= 62 else None
     n = r.index() * item_size
+    r.need(n)
     out = r.data[r.pos:r.pos + n]
     r.pos += n
     if skip is not None and skip != r.pos:

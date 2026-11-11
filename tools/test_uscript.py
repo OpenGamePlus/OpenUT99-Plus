@@ -36,6 +36,10 @@ class UscriptTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             uscript.decode_script(PKG, bytes([0x1D]) + b"\0" * 4, 0, 3)  # IntConst is 5 bytes, size says 3
 
+    def test_decode_script_depth_limit(self):
+        with self.assertRaises(ValueError):
+            uscript.decode_script(PKG, bytes([0x04]) * 300 + bytes([0x0B]), 0, 301)
+
     def test_function(self):
         data = struct_body() + struct.pack("<HBI", 0, 0, 0x40) + struct.pack("<H", 7)  # FUNC_Net: rep offset
         fn, end = uscript.read_function(PKG, data, {}, 0, [])

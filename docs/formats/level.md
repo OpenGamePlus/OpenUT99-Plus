@@ -47,7 +47,7 @@ Node (36 bytes + 7 compact indices): plane (4 × f32: normal, distance), zone ma
 
 Surface: texture ref, poly flags u32, base (point idx), normal, texture U, texture V (vector idx), light map (idx, −1 = none), brush poly (compact), pan U, pan V (i16), actor ref.
 
-Lightmap: data offset i32 (into light bits), pan vector, U clamp, V clamp (compact), U scale, V scale (f32), first light i32 (index into `lights`). Its data is, for each light in `lights[first light ..]` up to the 0 entry, a shadow bitmap of V clamp rows × ceil(U clamp / 8) bytes, one bit per luxel. The final light colour is computed at run time from the light actors' properties (brightness, hue, radius, effect): engine behaviour, not data.
+Lightmap: data offset i32 (into light bits), pan vector, U clamp, V clamp (compact), U scale, V scale (f32), first light i32 (index into `lights`; −1 = no lights). Its data is, for each light in `lights[first light ..]` up to the 0 entry, a shadow bitmap of V clamp rows × ceil(U clamp / 8) bytes, one bit per luxel. The final light colour is computed at run time from the light actors' properties (brightness, hue, radius, effect): engine behaviour, not data.
 
 ## Lightmap coordinates and shadow bits (verified)
 

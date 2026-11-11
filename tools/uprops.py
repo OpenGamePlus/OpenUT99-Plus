@@ -12,6 +12,7 @@ import struct
 import sys
 
 from upkg import Reader, object_name, parse
+from upkg import name as name_of
 
 HAS_STACK = 0x02000000  # object flag: a state frame precedes the properties
 TYPES = {1: "Byte", 2: "Int", 3: "Bool", 4: "Float", 5: "Object", 6: "Name", 7: "String", 8: "Class",
@@ -67,13 +68,13 @@ def read_properties(pkg, data, export):
             r.index()  # bytecode offset
     props = []
     while True:
-        name = pkg["names"][r.index()]
+        name = name_of(pkg, r.index())
         if name == "None":
             return props, r.pos
         info = data[r.pos]
         r.pos += 1
         t, code = info & 0x0F, (info >> 4) & 0x07
-        struct_name = pkg["names"][r.index()] if t == 10 else None
+        struct_name = name_of(pkg, r.index()) if t == 10 else None
         if code < 5:
             size = SIZES[code]
         else:

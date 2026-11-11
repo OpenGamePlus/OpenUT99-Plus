@@ -8,7 +8,7 @@
 namespace ut {
 
 void Reader::need(size_t n) const {
-    if (pos + n > data.size()) throw std::runtime_error("read past end of data");
+    if (pos > data.size() || n > data.size() - pos) throw std::runtime_error("read past end of data");
 }
 
 uint8_t Reader::u8() {
@@ -129,7 +129,8 @@ Package parse_package(std::vector<uint8_t> data) {
         e.flags = r.u32();
         e.size = r.index();
         e.offset = e.size > 0 ? r.index() : 0;
-        if (e.size < 0 || size_t(e.offset) + size_t(e.size) > p.data.size()) throw std::runtime_error("export outside file");
+        if (e.size < 0 || e.offset < 0 || size_t(e.size) > p.data.size() || size_t(e.offset) > p.data.size() - size_t(e.size))
+            throw std::runtime_error("export outside file");
         p.exports.push_back(std::move(e));
     }
     return p;

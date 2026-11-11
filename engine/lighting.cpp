@@ -21,7 +21,8 @@ Vec3 luxel_position(const Model& m, const Surf& s, const LightMap& lm, int i, in
 
 int lightmap_lights(const Model& m, const LightMap& lm) {
     int n = 0;
-    for (size_t i = size_t(std::max(lm.light_actors, 0)); i < m.lights.size() && m.lights[i] != 0; i++) n++;
+    if (lm.light_actors < 0) return 0;  // -1: no lights (retail)
+    for (size_t i = size_t(lm.light_actors); i < m.lights.size() && m.lights[i] != 0; i++) n++;
     return n;
 }
 
@@ -51,7 +52,7 @@ float light_falloff(float d, int radius) {
 }
 
 bool Atlas::place(int w, int h, int* x, int* y) {
-    if (w > width_) return false;
+    if (w < 1 || h < 1 || w > width_) return false;
     if (shelf_x_ + w > width_) shelf_y_ += shelf_h_, shelf_x_ = 0, shelf_h_ = 0;
     *x = shelf_x_, *y = shelf_y_;
     shelf_x_ += w;
