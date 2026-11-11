@@ -35,7 +35,9 @@ public:
     void set_model(Model m) { model_ = std::move(m), has_model_ = true; }  // load() does it; for tests
     // ZoneInfo of the BSP leaf holding p (the LevelInfo for zone 0); also its zone number and leaf if asked.
     Obj* zone_at(Vec3 p, int* number, int* leaf);
-    void update_region(Obj* o);  // Region (Zone, iLeaf, ZoneNumber) from Location; ZoneChange when it changes
+    // Region (Zone, iLeaf, ZoneNumber) from Location, ZoneChange when it changes; pawns also FootRegion / HeadRegion.
+    void update_region(Obj* o);
+    void set_region(Obj* o, const char* var, Vec3 at, const char* event);
 
 private:
     void guarded(Obj* o, const std::string& event, std::vector<Value> args = {});
@@ -50,6 +52,10 @@ private:
     // weight(nav, distance) > 0 marks a goal; the best weight wins.
     Obj* route(Obj* pawn, const std::function<float(Obj*, float)>& weight, float* best);
     void walk(Obj* o, float dt);
+    void sight(Obj* o, float dt);  // SeePlayer / EnemyNotVisible
+    // Closest actor hit by the segment a-b before *t_hit (fraction); updates *t_hit and *normal.
+    Obj* trace_actors(Obj* self, Vec3 a, Vec3 b, float* t_hit, Vec3* normal, const std::set<Obj*>* skip = nullptr);
+    std::set<std::pair<Obj*, Obj*>> seen_;  // (viewer, seen) last time it looked
     struct Edge {
         Obj* to;
         float distance;

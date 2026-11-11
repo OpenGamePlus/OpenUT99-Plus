@@ -66,6 +66,36 @@ struct Sweep {
 
 }  // namespace
 
+bool ray_cylinder(Vec3 a, Vec3 b, Vec3 c, float r, float h, float* t_hit, Vec3* normal) {
+    Vec3 d{b.x - a.x, b.y - a.y, b.z - a.z};
+    float ox = a.x - c.x, oy = a.y - c.y;
+    float qa = d.x * d.x + d.y * d.y, qb = 2 * (ox * d.x + oy * d.y), qc = ox * ox + oy * oy - r * r;
+    float t = -1;
+    Vec3 n{0, 0, 0};
+    if (qc <= 0) {
+        if (std::fabs(a.z - c.z) <= h) return false;  // starts inside
+        t = 0;  // above or below: the caps
+    } else if (qa > 0) {
+        float disc = qb * qb - 4 * qa * qc;
+        if (disc < 0) return false;
+        t = (-qb - std::sqrt(disc)) / (2 * qa);
+        n = {(ox + d.x * t) / r, (oy + d.y * t) / r, 0};
+    }
+    if (t < 0 || t > *t_hit) return false;
+    float z = a.z + d.z * t;
+    if (z > c.z + h || z < c.z - h) {  // passes above or below the side: through a cap?
+        if (d.z == 0) return false;
+        float cap = z > c.z + h ? c.z + h : c.z - h;
+        t = (cap - a.z) / d.z;
+        if (t < 0 || t > *t_hit) return false;
+        float x = a.x + d.x * t - c.x, y = a.y + d.y * t - c.y;
+        if (x * x + y * y > r * r) return false;
+        n = {0, 0, cap > c.z ? 1.f : -1.f};
+    }
+    *t_hit = t, *normal = n;
+    return true;
+}
+
 bool point_solid(const Model& m, Vec3 p) {
     bool outside = true;
     int32_t n = 0;

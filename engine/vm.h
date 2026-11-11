@@ -108,7 +108,9 @@ public:
     std::string name_of(const Obj* o) const;
     // Iterator natives (ForEach) put the values to visit here; the VM loops over them.
     std::vector<Value> iterator_items;
+    std::vector<std::vector<Value>> iterator_extra;  // optional: per item, values for the further out parameters
     std::vector<std::string> log;  // Log() output and warnings, "Tag: text"
+    std::vector<std::string> trace_calls;  // lower-case function names logged as "Call: Class.Function (state)"
 
 private:
     struct Frame;
@@ -148,7 +150,7 @@ private:
     std::map<const Obj*, Obj*> supers_;
     std::map<std::pair<const Obj*, std::string>, Obj*> props_;
     std::map<std::string, std::unique_ptr<Obj>> intrinsic_;  // classes with no export (Core.Class, Engine.Sound...)
-    Ref iterator_out_;  // out parameter of the last iterator native called
+    std::vector<Ref> iterator_outs_;  // out parameters of the last iterator native called
     std::map<const Obj*, std::vector<std::string>> struct_names_;
     std::map<std::tuple<const Obj*, const Obj*, std::string>, const Function*> virtuals_;
     int depth_ = 0;

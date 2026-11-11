@@ -400,7 +400,8 @@ static void test_read_class() {
 // 17 instance variable int X of T (default 5); 18 Get(): X = 3; return X * default.X; 20 Null(): return None.X * 4.
 // 22 latent native Sleep(float) (256); 24 auto state S: Get() returns 99; code Begin: X = 7; Sleep(1); X = 9; stop.
 // 27 Call(): return Get(), a virtual call that sees the state.
-// 29 iterator native Three(out int V) (300); 31 Sum(): S = 1; ForEach Three(V) S = S * V; return S.
+// 29 iterator native Three(out int V, out int U) (300); 31 Sum(): S = 1; ForEach Three(V, U) S = S * U; return S.
+// 50 Sum's local U; 51 Three's parameter U.
 // 35-37 TimerRate, TimerCounter, bTimerLoop of T; 38 Timer(): X = X * 2.
 // 39-47 Location, Velocity, Acceleration, Physics, bCollideActors, bCollideWorld, CollisionRadius, CollisionHeight,
 // GroundSpeed of T; 48 Touch(Other): X = X * 2.
@@ -494,19 +495,19 @@ static Package vm_package() {
     add(-1, 1, "Call", func(28, call, 7, 0, 0));
     add(-2, 27, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
     add(-1, 1, "Three", func(30, {}, 0, 300, kFuncNative | kFuncIterator | 1));
-    add(-2, 29, "V", prop(0, kParm | kOutParm));
+    add(-2, 29, "V", prop(51, kParm | kOutParm));
     Bytes sum = {0x0F, 0x00};
     put(sum, cindex(32)); sum.push_back(0x26);                                                  // 0: S = 1
-    sum.push_back(0x2F); sum.push_back(0x61); sum.push_back(0x2C); sum.push_back(0x00);         // 7: ForEach Three(V)
-    put(sum, cindex(33)); sum.push_back(0x16); put(sum, uint16_t(37));
-    sum.push_back(0x0F); sum.push_back(0x00); put(sum, cindex(32)); sum.push_back(0x90);       // 18: S = S * V
-    sum.push_back(0x00); put(sum, cindex(32)); sum.push_back(0x00); put(sum, cindex(33)); sum.push_back(0x16);
-    sum.push_back(0x31); sum.push_back(0x30);                                                   // 36: next; 37: pop
-    sum.push_back(0x04); sum.push_back(0x00); put(sum, cindex(32));                             // 38: return S
-    add(-1, 1, "Sum", func(32, sum, 44, 0, 0));
+    sum.push_back(0x2F); sum.push_back(0x61); sum.push_back(0x2C); sum.push_back(0x00);         // 7: ForEach Three(V, U)
+    put(sum, cindex(33)); sum.push_back(0x00); put(sum, cindex(50)); sum.push_back(0x16); put(sum, uint16_t(42));
+    sum.push_back(0x0F); sum.push_back(0x00); put(sum, cindex(32)); sum.push_back(0x90);       // 23: S = S * U
+    sum.push_back(0x00); put(sum, cindex(32)); sum.push_back(0x00); put(sum, cindex(50)); sum.push_back(0x16);
+    sum.push_back(0x31); sum.push_back(0x30);                                                   // 41: next; 42: pop
+    sum.push_back(0x04); sum.push_back(0x00); put(sum, cindex(32));                             // 43: return S
+    add(-1, 1, "Sum", func(32, sum, 49, 0, 0));
     add(-2, 31, "S", prop(33, 0));
     add(-2, 31, "V", prop(34, 0));
-    add(-2, 31, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    add(-2, 31, "ReturnValue", prop(50, kParm | kOutParm | kReturnParm));
     add(-4, 1, "TimerRate", prop(0, 0));
     add(-4, 1, "TimerCounter", prop(0, 0));
     add(-3, 1, "bTimerLoop", prop(0, 0));
@@ -527,6 +528,8 @@ static Package vm_package() {
     add(-4, 1, "GroundSpeed", prop(0, 0));
     add(-1, 1, "Touch", func(49, timer, 15, 0, 0));
     add(-8, 48, "Other", prop(0, kParm));
+    add(-2, 31, "U", prop(0, 0));
+    add(-2, 29, "U", prop(0, kParm | kOutParm));
     return p;
 }
 
@@ -564,12 +567,13 @@ static void test_vm() {
     assert(vm.call(call, self, none).i == 15);
     vm.add_native("Three", [&vm](Obj*, std::vector<Value*>&, Value&) {
         for (int k = 1; k <= 3; k++) {
-            Value v = Value::of(VT::Int);
-            v.i = k;
+            Value v = Value::of(VT::Int), u = Value::of(VT::Int);
+            v.i = k, u.i = k + 1;
             vm.iterator_items.push_back(v);
+            vm.iterator_extra.push_back({u});
         }
     });
-    assert(vm.call(vm.function(p, 31), self, none).i == 6);  // 1 * 1 * 2 * 3: every item visited once
+    assert(vm.call(vm.function(p, 31), self, none).i == 24);  // 2 * 3 * 4: every item's second out visited once
     PackageSet set(nullptr);
     World w(vm, set);
     Obj* a = w.spawn(t, nullptr, nullptr, nullptr, nullptr, nullptr);
@@ -635,6 +639,16 @@ static void test_collision() {
     assert(trace(m, {0, 0, 5}, {0, 0, -50}, {10, 10, 10}).time < 0.05f);  // but cannot sink further
     h = trace(m, {95, 0, 60}, {95, 0, 0}, {10, 10, 10});  // box overlapping the wall slides down along it to the floor
     assert(h.hit && h.normal.z == 1 && std::fabs(h.time - 50.f / 60.f) < 0.01f);
+    float t = 1;
+    Vec3 n{};
+    assert(ray_cylinder({-100, 0, 0}, {100, 0, 0}, {0, 0, 0}, 10, 20, &t, &n) && std::fabs(t - 0.45f) < 1e-4f && n.x == -1);
+    t = 1;
+    assert(ray_cylinder({0, 0, 100}, {0, 0, -100}, {0, 0, 0}, 10, 20, &t, &n) && std::fabs(t - 0.4f) < 1e-4f && n.z == 1);
+    t = 1;
+    assert(!ray_cylinder({-100, 0, 30}, {100, 0, 30}, {0, 0, 0}, 10, 20, &t, &n));  // passes above
+    assert(!ray_cylinder({0, 0, 0}, {100, 0, 0}, {0, 0, 0}, 10, 20, &t, &n));       // starts inside
+    t = 0.3f;
+    assert(!ray_cylinder({-100, 0, 0}, {100, 0, 0}, {0, 0, 0}, 10, 20, &t, &n));    // something nearer already
     floor.flags = 1;  // not CSG: crossing it keeps empty space
     m.nodes[0] = floor;
     assert(!point_solid(m, {0, 0, -1}));

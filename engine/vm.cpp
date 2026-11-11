@@ -292,9 +292,11 @@ struct Vm::Frame {
     bool done = false;
     struct Iter {  // an open ForEach
         std::vector<Value> items;
+        std::vector<std::vector<Value>> extra;  // values for the other out parameters, per item (may be empty)
         size_t next = 0;
-        Ref out;
+        std::vector<Ref> outs;
         size_t body = 0;
+        void put(size_t k);  // writes item k into the out parameters
     };
     std::vector<Iter> iters;
 
@@ -357,6 +359,16 @@ void write(Value* v, int comp, const Value& x) {
     else if (v->t == VT::Vector) v->v[comp] = x.f;
     else v->r[comp] = x.i;
 }
+
+}  // namespace
+
+void Vm::Frame::Iter::put(size_t k) {
+    write(outs[0].v, outs[0].comp, items[k]);
+    for (size_t j = 0; k < extra.size() && j < extra[k].size() && j + 1 < outs.size(); j++)
+        write(outs[j + 1].v, outs[j + 1].comp, extra[k][j]);
+}
+
+namespace {
 
 int member_index(const Value& s, const std::string& m) {  // component of Vector / Rotator, or struct field
     const char* vec[] = {"X", "Y", "Z"};
@@ -464,9 +476,17 @@ std::vector<Value>& Vm::var(Obj* o, const Package& p, int32_t prop_ref) {
     Obj* prop = object(p, prop_ref);
     if (!prop) throw std::runtime_error("variable ref None");
     auto it = o->vars.find(prop);
-    if (it != o->vars.end()) return it->second;
-    const Local& l = decl(prop);
-    return o->vars.emplace(prop, std::vector<Value>(size_t(l.dim), zero(*prop->pkg, l))).first->second;
+    if (it == o->vars.end()) {
+        const Local& l = decl(prop);
+        it = o->vars.emplace(prop, std::vector<Value>(size_t(l.dim), zero(*prop->pkg, l))).first;
+    }
+    // Object's native variables are kept by the engine: Class, Name (shortcut: Outer not kept, writes dropped)
+    const Export& e = prop->pkg->exports[size_t(prop->ref - 1)];
+    if (e.package > 0 && prop->pkg->exports[size_t(e.package - 1)].name == "Object") {
+        if (e.name == "Class") it->second[0].o = class_of(o);
+        else if (e.name == "Name") it->second[0].s = name_of(o);
+    }
+    return it->second;
 }
 
 Obj* Vm::defaults(Obj* cls) {
@@ -707,7 +727,15 @@ Value Vm::context(Frame& fr, Obj* ctx, bool cls, Ref* place) {
     fr.u8();  // result size
     if (cls && o) o = defaults(o);
     if (!o) {  // None context: the expression is skipped and yields zero
-        warn(fr, "accessed None");
+        std::string what;  // the member it tried to reach, for the warning
+        size_t at = fr.pc;
+        if (at + 5 <= fr.f.code.size() && (fr.f.code[at] <= 0x02 || fr.f.code[at] == 0x1B || fr.f.code[at] == 0x1C)) {
+            uint32_t ref = 0;
+            for (int i = 0; i < 4; i++) ref |= uint32_t(fr.f.code[at + 1 + size_t(i)]) << (8 * i);
+            what = fr.f.code[at] == 0x1B ? (ref < fr.f.pkg->names.size() ? fr.f.pkg->names[ref] : "?")
+                                          : object_name(*fr.f.pkg, int32_t(ref));
+        }
+        warn(fr, "accessed None" + (what.empty() ? "" : " (" + what + ")"));
         fr.jump(fr.pc + skip);
         if (place) *place = Ref{};
         return Value();
@@ -765,6 +793,8 @@ Vm::Ref Vm::lvalue(Frame& fr, Obj* ctx) {
 
 Value Vm::call(const Function& f, Obj* self, std::vector<Value>& args) {
     if (f.flags & kFuncNative) throw std::runtime_error(f.name + " is native; call it from bytecode");
+    if (!trace_calls.empty() && std::find(trace_calls.begin(), trace_calls.end(), lower(f.name)) != trace_calls.end())
+        log.push_back("Call: " + name_of(self ? class_of(self) : nullptr) + "." + f.name + " (" + name_of(self ? self->state : nullptr) + ")");
     struct Depth {  // released on exceptions too
         int& d;
         explicit Depth(int& v) : d(v) {
@@ -858,7 +888,10 @@ Value Vm::call_native(Frame& fr, const Bound& b, Obj* self) {
     }
     if (!ended && fr.u8() != 0x16) throw std::runtime_error(fr.f.name + ": too many arguments to native " + d.name);
     if (!b.impl) throw std::runtime_error("native " + d.name + " (" + std::to_string(d.native) + ") not implemented");
-    if (d.flags & kFuncIterator) iterator_out_ = outs.empty() ? Ref{} : outs[0].second;
+    if (d.flags & kFuncIterator) {
+        iterator_outs_.clear();
+        for (auto& o : outs) iterator_outs_.push_back(o.second);
+    }
     (*b.impl)(self, ptrs, ret);
     for (auto& [v, place] : outs) write(place.v, place.comp, *v);
     return ret;
@@ -952,21 +985,24 @@ Value Vm::eval(Frame& fr, Obj* ctx) {
         }
         case 0x2F: {  // ForEach: iterator native call, u16 offset of the loop's 0x30
             iterator_items.clear();
-            iterator_out_ = {};
+            iterator_extra.clear();
+            iterator_outs_.clear();
             eval(fr, ctx);
             uint16_t end = fr.u16();
-            fr.iters.push_back({std::move(iterator_items), 0, iterator_out_, fr.pc});
+            if (iterator_outs_.empty()) iterator_outs_.push_back({});
+            fr.iters.push_back({std::move(iterator_items), std::move(iterator_extra), 0, iterator_outs_, fr.pc});
             iterator_items.clear();
+            iterator_extra.clear();
             Frame::Iter& it = fr.iters.back();
             if (it.items.empty()) fr.jump(end);
-            else write(it.out.v, it.out.comp, it.items[0]);
+            else it.put(0);
             return Value();
         }
         case 0x31: {  // iterator next: back to the body while items remain
             if (fr.iters.empty()) throw std::runtime_error(fr.f.name + ": iterator next outside ForEach");
             Frame::Iter& it = fr.iters.back();
             if (++it.next < it.items.size()) {
-                write(it.out.v, it.out.comp, it.items[it.next]);
+                it.put(it.next);
                 fr.jump(it.body);
             }
             return Value();

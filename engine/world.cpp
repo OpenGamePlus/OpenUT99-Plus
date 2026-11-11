@@ -56,7 +56,8 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
         if (Value* p = vm.prop(self, "Rotation")) std::copy(a[0]->r, a[0]->r + 3, p->r);
         r.i = 1;
     });
-    vm.add_native("PlaySound", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: no audio yet
+    for (const char* n : {"PlaySound", "PlayOwnedSound", "DemoPlaySound"})
+        vm.add_native(n, [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: no audio yet
     // Animation (public UE1 documentation, unverified): AnimFrame runs 0..1 over the sequence at
     // AnimRate = Rate * sequence rate / frames; a non-looping animation finishes at AnimLast = 1 - 1 / frames.
     auto play = [this](Obj* self, const Value* name, const Value* rate, bool loop) {
@@ -139,11 +140,14 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
         if (!has_model_ || !from) return;
         Vec3 s0{from->v[0], from->v[1], from->v[2]}, e{a[2]->v[0], a[2]->v[1], a[2]->v[2]};
         Vec3 ext = a[5] ? Vec3{a[5]->v[0], a[5]->v[1], a[5]->v[2]} : Vec3{0, 0, 0};
-        Hit h = trace(model_, s0, e, ext);  // shortcut: actors are not traced yet, only the world
-        if (!h.hit) return;
-        a[0]->v[0] = s0.x + (e.x - s0.x) * h.time, a[0]->v[1] = s0.y + (e.y - s0.y) * h.time, a[0]->v[2] = s0.z + (e.z - s0.z) * h.time;
-        a[1]->v[0] = h.normal.x, a[1]->v[1] = h.normal.y, a[1]->v[2] = h.normal.z;
-        r.o = level_info;  // the world (BSP) is reported as the LevelInfo
+        Hit h = trace(model_, s0, e, ext);
+        float t = h.hit ? h.time : 1;
+        Vec3 n = h.normal;
+        Obj* actor = a[4] && a[4]->i ? trace_actors(self, s0, e, &t, &n) : nullptr;  // shortcut: actors as lines, no extent
+        if (!h.hit && !actor) return;
+        a[0]->v[0] = s0.x + (e.x - s0.x) * t, a[0]->v[1] = s0.y + (e.y - s0.y) * t, a[0]->v[2] = s0.z + (e.z - s0.z) * t;
+        a[1]->v[0] = n.x, a[1]->v[1] = n.y, a[1]->v[2] = n.z;
+        r.o = actor ? actor : level_info;  // the world (BSP) is reported as the LevelInfo
     });
     vm.add_native("describeSpec", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: reach specs not loaded yet
     vm.add_native("SetOwner", [&vm](Obj* self, std::vector<Value*>& a, Value&) {
@@ -154,6 +158,7 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
     vm.add_native("PlayerCanSeeMe", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: no player view yet: false
     vm.add_native("GetAddressURL", [](Obj*, std::vector<Value*>&, Value&) {});   // shortcut: no network: ""
     vm.add_native("GetNetworkNumber", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: no network: ""
+    vm.add_native("DetachDecal", [](Obj*, std::vector<Value*>&, Value&) {});
     vm.add_native("AttachDecal", [](Obj*, std::vector<Value*>&, Value&) {});       // shortcut: no decals yet: None
     vm.add_native("SetBase", [&vm](Obj* self, std::vector<Value*>& a, Value&) {
         if (Value* p = vm.prop(self, "Base")) p->o = a[0]->o;  // shortcut: BaseChange events not sent yet
@@ -210,7 +215,35 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
     vm.add_native("TouchingActors", [this, iterate](Obj* self, std::vector<Value*>& a, Value&) {
         iterate(a, [&](Obj* o) { return touching_.count({self, o}) > 0; });
     });
-    vm.add_native("TraceActors", [](Obj*, std::vector<Value*>&, Value&) {});     // shortcut: no traces yet
+    // TraceActors(BaseClass, out Actor, out HitLoc, out HitNorm, End, optional Start, optional Extent): the actors
+    // the line crosses, nearest first, then the world (as the LevelInfo) where the line meets the BSP.
+    vm.add_native("TraceActors", [this](Obj* self, std::vector<Value*>& a, Value&) {
+        const Value* from = a[5] ? a[5] : vm_.prop(self, "Location");
+        if (!from) return;
+        Vec3 s0{from->v[0], from->v[1], from->v[2]}, e{a[4]->v[0], a[4]->v[1], a[4]->v[2]};
+        Hit wh = has_model_ ? trace(model_, s0, e, {0, 0, 0}) : Hit{};  // shortcut: lines only, Extent ignored
+        std::vector<std::pair<float, std::pair<Obj*, Vec3>>> hits;
+        std::set<Obj*> skip;
+        for (;;) {  // every cylinder crossed before the wall, by repeating the nearest-hit search
+            float t = wh.hit ? wh.time : 1;
+            Vec3 n{0, 0, 0};
+            Obj* o = trace_actors(self, s0, e, &t, &n, &skip);
+            if (!o) break;
+            skip.insert(o);
+            if (vm_.is_a(vm_.class_of(o), a[0]->o)) hits.push_back({t, {o, n}});
+        }
+        auto add = [&](Obj* o, float t, Vec3 n) {
+            Value v = Value::of(VT::Object), loc = Value::of(VT::Vector), nor = Value::of(VT::Vector);
+            v.o = o;
+            loc.v[0] = s0.x + (e.x - s0.x) * t, loc.v[1] = s0.y + (e.y - s0.y) * t, loc.v[2] = s0.z + (e.z - s0.z) * t;
+            nor.v[0] = n.x, nor.v[1] = n.y, nor.v[2] = n.z;
+            vm_.iterator_items.push_back(v);
+            vm_.iterator_extra.push_back({loc, nor});
+        };
+        std::sort(hits.begin(), hits.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
+        for (auto& [t, on] : hits) add(on.first, t, on.second);
+        if (wh.hit && level_info && vm_.is_a(vm_.class_of(level_info), a[0]->o)) add(level_info, wh.time, wh.normal);
+    });
     vm.add_native("RadiusActors", [iterate, near](Obj* self, std::vector<Value*>& a, Value&) {
         iterate(a, [&](Obj* o) { return near(self, a, o); });
     });
@@ -401,12 +434,11 @@ Obj* World::zone_at(Vec3 p, int* number, int* leaf) {
     return ref ? vm_.object(*map_, ref) : level_info;
 }
 
-void World::update_region(Obj* o) {
-    Value* region = vm_.prop(o, "Region");
-    Value* loc = vm_.prop(o, "Location");
-    if (!region || !loc || !region->field_names) return;
+void World::set_region(Obj* o, const char* var, Vec3 at, const char* event) {
+    Value* region = vm_.prop(o, var);
+    if (!region || !region->field_names) return;
     int number = 0, leaf = -1;
-    Obj* zone = zone_at({loc->v[0], loc->v[1], loc->v[2]}, &number, &leaf);
+    Obj* zone = zone_at(at, &number, &leaf);
     Obj* old = nullptr;
     for (size_t k = 0; k < region->fields.size(); k++) {  // PointRegion: Zone, iLeaf, ZoneNumber
         const std::string& f = (*region->field_names)[k];
@@ -418,8 +450,21 @@ void World::update_region(Obj* o) {
     if (old != zone && begun_) {
         Value z = Value::of(VT::Object);
         z.o = zone;
-        guarded(o, "ZoneChange", {z});  // unverified: the original also tells the zones (ActorEntered / ActorLeaving)
+        guarded(o, event, {z});  // unverified: the original also tells the zones (ActorEntered / ActorLeaving)
     }
+}
+
+void World::update_region(Obj* o) {
+    const Value* loc = vm_.prop(o, "Location");
+    if (!loc) return;
+    Vec3 at{loc->v[0], loc->v[1], loc->v[2]};
+    set_region(o, "Region", at, "ZoneChange");
+    const Value* pawn = vm_.prop(o, "bIsPawn");
+    if (!pawn || !pawn->i) return;
+    const Value* h = vm_.prop(o, "CollisionHeight");
+    const Value* eye = vm_.prop(o, "EyeHeight");
+    set_region(o, "FootRegion", {at.x, at.y, at.z - (h ? h->f : 0)}, "FootZoneChange");
+    set_region(o, "HeadRegion", {at.x, at.y, at.z + (eye ? eye->f : 0)}, "HeadZoneChange");
 }
 
 Hit World::move(Obj* o, Vec3 d) {
@@ -501,6 +546,7 @@ void World::physics(Obj* o, float dt) {
             if (h.hit) wall(h);
             return;
         }
+        case 3:  // swimming: shortcut, moves like flying (no buoyancy or water friction yet)
         case 4: {  // flying: slide along what it hits
             Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt});
             if (h.hit) {
@@ -597,6 +643,7 @@ void World::tick(float dt) {
         physics(o, dt);
         update_region(o);
         if (moving && !deleted_.count(o)) touches(o);
+        if (const Value* pawn = vm_.prop(o, "bIsPawn"); pawn && pawn->i && !deleted_.count(o)) sight(o, dt);
         animate(o, dt);
         if (deleted_.count(o)) continue;
         try {

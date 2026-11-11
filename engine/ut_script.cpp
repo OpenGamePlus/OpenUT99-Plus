@@ -4,6 +4,8 @@
 // ut_script DIR --map MAP [SECONDS]               load a map's actors, begin play, tick (0.05 s); errors and log ranked
 // ut_script DIR --maps [SECONDS]                  the same for every map of Maps/, errors summed over all of them
 // Arguments are given per parameter (int, float, bool True/False, string, name); out parameters are printed after.
+// UTVM_TRACE=Fire,TakeDamage logs every call of those script functions (debugging).
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -63,7 +65,7 @@ std::string run_states(ut::Vm& vm, ut::Obj* cls, int ticks, bool* has_auto) {
 }
 
 // Ticks the world for `seconds`, summing how far each pawn travels (sampled once a second).
-void play(ut::Vm& vm, ut::World& w, float seconds, int* pawns, float* travelled) {
+void play(ut::Vm& vm, ut::World& w, float seconds, int* pawns, float* travelled, int* kills) {
     std::map<ut::Obj*, ut::Vec3> last;
     for (int t = 0; float(t) * 0.05f < seconds; t++) {
         w.tick(0.05f);
@@ -82,6 +84,8 @@ void play(ut::Vm& vm, ut::World& w, float seconds, int* pawns, float* travelled)
         }
     }
     *pawns += int(last.size());
+    for (auto& [o, at] : last)  // deaths recorded by the game (PlayerReplicationInfo.Deaths)
+        if (const ut::Value* pri = vm.prop(o, "PlayerReplicationInfo"); pri && pri->o) *kills += int(vm.prop(pri->o, "Deaths")->f);
 }
 
 void ranked(const std::map<std::string, int>& counts, int limit) {
@@ -92,14 +96,26 @@ void ranked(const std::map<std::string, int>& counts, int limit) {
         if (shown++ < limit) std::printf("%6d  %s\n", -n, e.c_str());
 }
 
+void trace_from_env(ut::Vm& vm) {
+    const char* t = std::getenv("UTVM_TRACE");
+    for (std::string s = t ? t : ""; !s.empty();) {
+        size_t c = s.find(',');
+        std::string n = s.substr(0, c);
+        for (char& ch : n) ch = char(std::tolower(ch));
+        if (!n.empty()) vm.trace_calls.push_back(n);
+        s = c == std::string::npos ? "" : s.substr(c + 1);
+    }
+}
+
 int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float seconds, const std::string& game) {
+    trace_from_env(vm);
     ut::World w(vm, packages);
     w.load(name, game);
     size_t loaded = w.actors.size();
     w.begin_play();
-    int ticks = int(seconds / 0.05f), pawns = 0;
+    int ticks = int(seconds / 0.05f), pawns = 0, kills = 0;
     float travelled = 0;
-    play(vm, w, seconds, &pawns, &travelled);
+    play(vm, w, seconds, &pawns, &travelled, &kills);
     std::map<std::string, int> lines;
     for (const std::string& l : vm.log) lines[l]++;
     int errors = 0;
@@ -107,13 +123,20 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float sec
     std::printf("%s: %zu actors loaded, game %s, %zu actors after %d ticks; %d script errors, %zu log lines\n",
                 name.c_str(), loaded, vm.name_of(w.game ? w.game->cls : nullptr).c_str(), w.actors.size(), ticks, errors,
                 vm.log.size());
-    std::printf("pawns: %d, %.0f units travelled\n", pawns, travelled);
+    std::printf("pawns: %d, %.0f units travelled, %d deaths\n", pawns, travelled, kills);
     const ut::Value* pawn = vm.prop(w.level_info, "PawnList");
     for (int n = 0; pawn && pawn->o && n < 64; pawn = vm.prop(pawn->o, "nextPawn"), n++) {
         ut::Obj* o = pawn->o;
         const ut::Value* loc = vm.prop(o, "Location");
-        std::printf("  %-14s state %-14s physics %d at %.0f %.0f %.0f\n", vm.name_of(o->cls).c_str(),
-                    vm.name_of(o->state).c_str(), vm.prop(o, "Physics")->i, loc->v[0], loc->v[1], loc->v[2]);
+        const ut::Value* pri = vm.prop(o, "PlayerReplicationInfo");
+        const ut::Value* weapon = vm.prop(o, "Weapon");
+        const ut::Value* enemy = vm.prop(o, "Enemy");
+        const ut::Value* health = vm.prop(o, "Health");
+        std::printf("  %-14s state %-14s physics %d at %.0f %.0f %.0f health %d weapon %s enemy %s score %.0f deaths %.0f\n",
+                    vm.name_of(o->cls).c_str(), vm.name_of(o->state).c_str(), vm.prop(o, "Physics")->i, loc->v[0],
+                    loc->v[1], loc->v[2], health ? health->i : 0, vm.name_of(weapon ? vm.class_of(weapon->o) : nullptr).c_str(),
+                    vm.name_of(enemy ? enemy->o : nullptr).c_str(), pri && pri->o ? vm.prop(pri->o, "Score")->f : 0.f,
+                    pri && pri->o ? vm.prop(pri->o, "Deaths")->f : 0.f);
     }
     std::printf("errors:\n");
     ranked(w.errors, 20);
@@ -124,7 +147,7 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float sec
 
 int maps(ut::PackageSet& packages, const std::string& root, float seconds, const std::string& game) {
     std::map<std::string, int> errors;
-    int count = 0, failed = 0, falling = 0, in_solid = 0, pawns = 0;
+    int count = 0, failed = 0, falling = 0, in_solid = 0, pawns = 0, kills = 0;
     float travelled = 0;
     std::map<std::string, int> solid_classes;
     size_t actors = 0;
@@ -138,7 +161,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
         try {
             w.load(d.path().stem().string(), game);
             w.begin_play();
-            play(vm, w, seconds, &pawns, &travelled);
+            play(vm, w, seconds, &pawns, &travelled, &kills);
         } catch (const std::exception& e) {
             failed++;
             errors["map failed: " + std::string(e.what())]++;
@@ -158,7 +181,8 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
     }
     std::printf("%d maps, %d failed, %zu actors alive at the end: %d still falling, %d colliding actors inside solid\n",
                 count, failed, actors, falling, in_solid);
-    std::printf("%d pawns, %.0f units travelled (%.0f per pawn)\n", pawns, travelled, pawns ? travelled / float(pawns) : 0.f);
+    std::printf("%d pawns, %.0f units travelled (%.0f per pawn), %d deaths\n", pawns, travelled,
+                pawns ? travelled / float(pawns) : 0.f, kills);
     if (in_solid) {
         std::printf("inside solid, by class:\n");
         ranked(solid_classes, 8);

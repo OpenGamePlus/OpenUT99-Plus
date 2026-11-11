@@ -27,10 +27,78 @@ int32_t yaw_to(Vec3 from, Vec3 to) {
 }  // namespace
 
 bool World::reachable(Obj* pawn, Vec3 dest) {
-    // shortcut: a clear line and no climb higher than a step + jump (120, unverified); the original walks the path
+    // shortcut: the pawn's box (raised by a step) fits along the straight line and there is floor under it every
+    // 48 units, no climb above 120 or drop below 400 (unverified); the original simulates the walk
     Vec3 from = vec_of(vm_.prop(pawn, "Location"));
     if (dest.z - from.z > 120) return false;
-    return !has_model_ || !trace(model_, from, dest, {0, 0, 0}).hit;
+    if (!has_model_) return true;
+    const Value* rv = vm_.prop(pawn, "CollisionRadius");
+    const Value* hv = vm_.prop(pawn, "CollisionHeight");
+    float r = rv ? rv->f * 0.8f : 0, h = hv ? std::max(0.f, hv->f - 25) : 0;
+    if (trace(model_, {from.x, from.y, from.z + 25}, {dest.x, dest.y, dest.z + 25}, {r, r, h}).hit) return false;
+    if (!vm_.prop(pawn, "Physics") || vm_.prop(pawn, "Physics")->i != 1) return true;  // flyers and swimmers
+    float len = dist2d(from, dest), feet = hv ? hv->f : 0;
+    for (float s = 48; s < len; s += 48) {
+        float k = s / len;
+        Vec3 p{from.x + (dest.x - from.x) * k, from.y + (dest.y - from.y) * k, from.z + (dest.z - from.z) * k};
+        if (!trace(model_, p, {p.x, p.y, p.z - feet - 400}, {0, 0, 0}).hit) return false;  // a pit
+    }
+    return true;
+}
+
+// Ray against the collision cylinders of actors that can be hit (bCollideActors and bProjTarget or bBlockActors).
+Obj* World::trace_actors(Obj* self, Vec3 a, Vec3 b, float* t_hit, Vec3* normal, const std::set<Obj*>* skip) {
+    Obj* best = nullptr;
+    for (Obj* o : actors) {
+        if (o == self || deleted_.count(o) || (skip && skip->count(o))) continue;
+        const Value* c = vm_.prop(o, "bCollideActors");
+        const Value* pt = vm_.prop(o, "bProjTarget");
+        const Value* ba = vm_.prop(o, "bBlockActors");
+        if (!c || !c->i || !((pt && pt->i) || (ba && ba->i))) continue;
+        Vec3 p = vec_of(vm_.prop(o, "Location"));
+        if (ray_cylinder(a, b, p, vm_.prop(o, "CollisionRadius")->f, vm_.prop(o, "CollisionHeight")->f, t_hit, normal))
+            best = o;
+    }
+    return best;
+}
+
+void World::sight(Obj* o, float dt) {
+    // Every 0.2 s a pawn looks for players: within SightRadius, inside PeripheralVision (cosine from its rotation)
+    // and in line of sight from its eyes -> SeePlayer(Other); a visible Enemy lost from sight -> EnemyNotVisible.
+    Value* counter = vm_.prop(o, "SightCounter");
+    if (!counter || (counter->f -= dt) > 0) return;
+    counter->f += 0.2f;
+    Vec3 eye = vec_of(vm_.prop(o, "Location"));
+    if (const Value* e = vm_.prop(o, "EyeHeight")) eye.z += e->f;
+    const Value* rot = vm_.prop(o, "Rotation");
+    float yaw = rot ? float(rot->r[1]) * 3.14159265f / 32768 : 0, pitch = rot ? float(rot->r[0]) * 3.14159265f / 32768 : 0;
+    Vec3 dir{std::cos(pitch) * std::cos(yaw), std::cos(pitch) * std::sin(yaw), std::sin(pitch)};
+    float radius = vm_.prop(o, "SightRadius")->f, cone = vm_.prop(o, "PeripheralVision")->f;
+    auto visible = [&](Obj* other, bool cone_check) {
+        Vec3 p = vec_of(vm_.prop(other, "Location"));
+        float dd = dist(eye, p);
+        if (dd > radius || dd < 1) return false;
+        Vec3 to{(p.x - eye.x) / dd, (p.y - eye.y) / dd, (p.z - eye.z) / dd};
+        if (cone_check && to.x * dir.x + to.y * dir.y + to.z * dir.z < cone) return false;
+        return !has_model_ || !trace(model_, eye, p, {0, 0, 0}).hit;
+    };
+    Value* enemy = vm_.prop(o, "Enemy");
+    if (enemy && enemy->o && !deleted_.count(enemy->o) && seen_.count({o, enemy->o}) && !visible(enemy->o, false)) {
+        seen_.erase({o, enemy->o});
+        guarded(o, "EnemyNotVisible");
+    }
+    for (const Value* p = vm_.prop(level_info, "PawnList"); p && p->o; p = vm_.prop(p->o, "nextPawn")) {
+        Obj* other = p->o;
+        const Value* player = vm_.prop(other, "bIsPlayer");
+        const Value* health = vm_.prop(other, "Health");
+        if (other == o || deleted_.count(other) || !player || !player->i || !health || health->i <= 0) continue;
+        if (!visible(other, true)) continue;
+        seen_.insert({o, other});
+        Value v = Value::of(VT::Object);
+        v.o = other;
+        guarded(o, "SeePlayer", {v});
+        if (deleted_.count(o)) return;
+    }
 }
 
 Obj* World::route(Obj* pawn, const std::function<float(Obj*, float)>& weight, float* best) {
@@ -191,8 +259,14 @@ void World::register_ai() {
         Vec3 d0 = dest();
         const Value* gs = vm_.prop(self, "GroundSpeed");
         float timeout = 1 + dist(vec_of(vm_.prop(self, "Location")), d0) / std::max(50.f, gs ? gs->f : 400.f) * 2;
-        auto steer = [this, self, dest, target, radius, height, start, timeout]() {
+        Vec3 last = vec_of(vm_.prop(self, "Location"));
+        float last_time = start;
+        auto steer = [this, self, dest, target, radius, height, start, timeout, last, last_time]() mutable {
             Vec3 at = vec_of(vm_.prop(self, "Location")), to = dest();
+            if (time - last_time >= 1) {  // no progress for a second: give up so the AI picks another way
+                if (dist(at, last) < 16) timeout = 0;
+                last = at, last_time = time;
+            }
             if (Value* d = vm_.prop(self, "Destination")) d->v[0] = to.x, d->v[1] = to.y, d->v[2] = to.z;
             Value* acc = vm_.prop(self, "Acceleration");
             bool reached = dist2d(at, to) < radius(self) + radius(target) + 8 &&

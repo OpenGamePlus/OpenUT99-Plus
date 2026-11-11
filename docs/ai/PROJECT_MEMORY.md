@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — combat: bots see, fight, die and respawn
+
+- Sight (`SeePlayer` / `EnemyNotVisible` every 0.2 s), traces through actor cylinders (`Trace`, `TraceActors` with several out values per `ForEach` item), foot / head regions: bots attack, fire, damage, kill, score and respawn on the retail scripts. `--maps 60`: 83 maps, no script error, 13 deaths among 289 bots (they still get stuck too often to meet much).
+- Found on the way: Object's native `Class` / `Name` must be filled in (`Item.Class == Class` decides every pickup); a trace starting inside a cylinder (a weapon in its owner) must not hit it; `UTVM_TRACE` call tracing and "accessed None (Member)" made each cause visible in minutes.
+- Next: navigation quality (bots stuck), then blocking between actors and projectile weapons checked in play.
+
 ## 2026-11-11 — bots in the match
 
 - Bots now join and roam: reach specs read, path network and Dijkstra routes (`FindPathToward`, `FindBestInventoryPath` with the items' own `BotDesireability`), latent `MoveTo` / `MoveToward` / `WaitForLanding` / `FinishAnim`, walking with step-up, touching (pickups), mesh animation sequences, actor regions. `--maps 20`: 289 bots over 83 maps, no script error.

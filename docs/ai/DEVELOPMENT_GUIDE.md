@@ -16,6 +16,11 @@
 - Package data is untrusted: C++ readers validate every file-provided index or size before using it; Python readers raise `ValueError` (the `Reader`, `lazy_bytes` and `name` helpers in `upkg.py` do it for you).
 - A reader change still parses every retail package: `python3 tools/uprops.py --sweep <UT99_DIR>` reports the same counts as the specs, "classes with both: none"; `python3 tools/uobjects.py --sweep <UT99_DIR>` shows no `leftover` or `error` for a class marked exact in coverage.
 
+## Debugging script
+
+- `UTVM_TRACE=Fire,TakeDamage build/ut_script <UT99_DIR> --map MAP 60` logs every call of those script functions with object and state; the `--map` report ranks errors and log lines and lists the pawns (state, weapon, enemy, score).
+- "accessed None (Member)" warnings name the member reached through a None context: usually something the engine should have filled in.
+
 ## Commits
 
 - Imperative subject, body says why. One topic per commit; code and the docs it affects together.
