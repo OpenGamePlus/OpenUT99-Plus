@@ -13,6 +13,7 @@ tools/
   upkg.py            Unreal package reader (header, names, imports, exports)
   uprops.py          tagged properties (generic object data)
   utex.py            Palette, Texture (mips, PNG preview)
+  usound.py          Sound, Music (embedded WAV / IT / S3M / XM)
   uobjects.py        dispatcher + sweep over all exports (exact / leftover / error / noreader)
   check_docs.py      documentation checker
   test_*.py          unit tests on synthetic data
@@ -26,7 +27,8 @@ tools/
 | Tagged properties | done, verified on all 273,585 non-class exports |
 | Palette, Texture, ScriptedTexture | done, byte-exact on all retail objects |
 | FireTexture, WetTexture, WaveTexture, IceTexture | done (data); animation not decoded |
-| Other class-specific data (sounds, levels, meshes, classes) | not started |
+| Sound, Music | done, byte-exact |
+| Other class-specific data (fonts, levels, meshes, classes) | not started |
 | Engine (C++) | not started |
 | Network | not started |
 
@@ -41,6 +43,7 @@ python3 tools/uprops.py --sweep <UT99_DIR>       # parse every export, counts pe
 python3 tools/uobjects.py --sweep <UT99_DIR>     # phase A progress: classes not yet byte-exact
 python3 tools/uobjects.py FILE OBJECT            # decode one export
 python3 tools/utex.py FILE TEXTURE --png out/x.png   # P8 preview
+python3 tools/usound.py FILE OBJECT --out out/x.wav  # embedded file
 ```
 
 ## Contracts
@@ -50,3 +53,4 @@ python3 tools/utex.py FILE TEXTURE --png out/x.png   # P8 preview
 - `uprops.read_properties(pkg, data, export) -> (props, end)`: `props` is a list of `name`, `type`, `index` (array index), `value`, `struct` (struct tags only); `end` is the offset after the `None` tag, where class data starts. Raises `ValueError` if a tag runs past the export.
 - `uobjects.register(*class_names)`: decorator for `reader(pkg, data, export, pos, props) -> (value, end)`, called with `pos` after the `None` tag (class objects: the export offset). `uobjects.read_object(pkg, data, export) -> {"props", "value", "end"}`; `uobjects.outcome(...)` → `exact` | `leftover` | `error` | `noreader`.
 - `utex.read_palette(...) -> [(R,G,B,A)]`; `utex.read_texture(...) -> {"mips": [...], "comp_mips"?: [...]}`, mip = `width`, `height`, `ubits`, `vbits`, `data`; `utex.read_mips(pkg, data, pos)`.
+- `upkg.lazy_bytes(reader, version) -> bytes`: bulk data with the version ≥ 62 skip offset (checked). `usound.read_sound(...) -> {"format", "data"}`; `usound.signature(bytes) -> "wav" | "it" | "s3m" | "xm" | "mod" | "unknown"`.

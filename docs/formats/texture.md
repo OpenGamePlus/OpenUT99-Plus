@@ -24,9 +24,7 @@ Mip array: compact-index count, then per mip:
 
 | Field | Type | Note |
 |---|---|---|
-| skip offset | u32 | version ≥ 63: absolute file position just past the pixel data; checked by the reader. Absent in version 61 (no retail texture is version 62) |
-| data size | compact index | |
-| data | bytes | |
+| data | lazy byte array ([package.md](package.md#lazy-byte-array)) | pixels |
 | USize, VSize | u32 ×2 | width, height |
 | UBits, VBits | u8 ×2 | log2 of width, height |
 

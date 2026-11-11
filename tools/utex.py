@@ -8,7 +8,7 @@ import struct
 import sys
 import zlib
 
-from upkg import Reader, parse
+from upkg import Reader, lazy_bytes, parse
 from uobjects import read_object, register
 
 
@@ -24,12 +24,7 @@ def read_mips(pkg, data, pos):
     r = Reader(data, pos)
     mips = []
     for _ in range(r.index()):
-        skip = r.u32() if pkg["version"] >= 63 else None
-        size = r.index()
-        pixels = data[r.pos:r.pos + size]
-        r.pos += size
-        if skip is not None and skip != r.pos:
-            raise ValueError(f"mip skip offset {skip} != {r.pos}")
+        pixels = lazy_bytes(r, pkg["version"])
         w, h = r.u32(), r.u32()
         mips.append({"width": w, "height": h, "ubits": data[r.pos], "vbits": data[r.pos + 1], "data": pixels})
         r.pos += 2

@@ -38,6 +38,18 @@ Per name: version ≥ 64: compact-index length (including the trailing NUL), the
 
 An i32 or compact index: 0 = none, > 0 = export `ref − 1`, < 0 = import `−ref − 1`.
 
+## Lazy byte array
+
+Bulk data (mip pixels, sound and music files) is stored as:
+
+| Field | Type | Note |
+|---|---|---|
+| skip offset | u32 | version ≥ 62 only: absolute file position just past the data; the reader checks it |
+| size | compact index | |
+| data | bytes | |
+
+Verified boundary: version 61 objects have no skip offset, version 62 (music) has it. Reader: `upkg.lazy_bytes`.
+
 ## Import table
 
 Per import: class package (name index), class name (name index), package (i32 object reference: the outer), object name (name index).

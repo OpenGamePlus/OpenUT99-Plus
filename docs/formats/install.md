@@ -8,7 +8,7 @@ Verified on the Steam release with the OldUnreal patch 469e (`System/Manifest.in
 | `System/` | code packages `.u` (24), native `.dll` (33), `.exe` (9), `.ini` (17), localisation `.int` (38), plus logs, images and misc | 137 |
 | `Textures/` | texture packages `.utx` | 110 |
 | `Sounds/` | sound packages `.uax` | 29 |
-| `Music/` | music packages `.umx` (tracker modules) | 30 |
+| `Music/` | music packages `.umx` (tracker modules: IT, S3M, XM; see [sound.md](sound.md)) | 30 |
 | `Cache/` | downloaded packages `.uxx` + `cache.ini` | 121 |
 | `SystemLocalized/` | localisation for other languages | 10 |
 | `Help/`, `Manual/`, `Web/`, `Logs/` | docs, web admin templates, logs | — |

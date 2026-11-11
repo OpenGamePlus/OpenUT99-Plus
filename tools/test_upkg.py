@@ -1,7 +1,7 @@
 import struct
 import unittest
 
-from upkg import Reader, TAG, object_name, parse
+from upkg import Reader, TAG, lazy_bytes, object_name, parse
 
 
 def cindex(v):
@@ -60,6 +60,17 @@ class UpkgTest(unittest.TestCase):
     def test_overlong_index(self):
         with self.assertRaises(ValueError):
             Reader(b"\x40" + b"\xff" * 5).index()
+
+    def test_lazy_bytes_skip_offset_from_version_62(self):
+        payload = b"abc"
+        old = cindex(3) + payload
+        new = struct.pack("<I", 4 + 1 + 3) + cindex(3) + payload
+        for version, data in ((61, old), (62, new), (69, new)):
+            r = Reader(data)
+            self.assertEqual(lazy_bytes(r, version), payload, version)
+            self.assertEqual(r.pos, len(data))
+        with self.assertRaises(ValueError):
+            lazy_bytes(Reader(struct.pack("<I", 99) + cindex(3) + payload), 69)
 
     def test_bad_tag(self):
         with self.assertRaises(ValueError):

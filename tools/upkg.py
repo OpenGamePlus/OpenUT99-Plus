@@ -45,6 +45,17 @@ class Reader:
         return s.rstrip(b"\0").decode("latin-1")
 
 
+def lazy_bytes(r, version):
+    """Lazy array of bytes: [u32 file position past the data, version >= 62], compact size, data."""
+    skip = r.u32() if version >= 62 else None
+    n = r.index()
+    out = r.data[r.pos:r.pos + n]
+    r.pos += n
+    if skip is not None and skip != r.pos:
+        raise ValueError(f"lazy array skip offset {skip} != {r.pos}")
+    return out
+
+
 def parse(data):
     r = Reader(data)
     if r.u32() != TAG:
