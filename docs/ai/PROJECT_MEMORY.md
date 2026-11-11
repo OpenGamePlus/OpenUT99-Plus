@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — VM objects
+
+- Objects in the VM: one canonical `Obj` per package object (imports resolved), instances copy their class defaults (super's, then the tagged list; all 1,604 retail classes build), variables are keyed by their property declaration. Contexts (`a.b`), class contexts, structs, static arrays and casts work; 13 `TestInfo` self-tests now pass, `PostBeginPlay` runs to its end.
+- Learned: in a context only the variable or call uses the context object; arguments and array indices use the caller's self. A None context skips its expression and yields zero. Static arrays reach 16,384 elements. Exports named `None` with size 0 and class 0 are placeholders, not classes.
+- Next: states and labels, then the first engine natives (spawn, timers) to run an actor.
+
 ## 2026-11-11 — UnrealScript VM: first retail functions run
 
 - `engine/vm.*` + `ut_script`: functions are loaded in their in-memory form (the bytecode walker now emits it), natives are bound by the export name of their Core declaration (`Add_IntInt`), not by hard-coded indices. `Console.FormatFloat`, `TwoDigitString` and Epic's own `TestInfo` self-tests (loops with `continue`, `switch`, optional out parameters) run with every `assert` passing.

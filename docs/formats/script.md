@@ -82,11 +82,15 @@ Engine: `engine/vm.*` ([ADR 0006](../architecture/adr/0006-unrealscript-executio
 | `0x18` skip (right operand of `&&`, `\|\|`, parameters flagged skip): the u16 counts the operand **and** the closing `0x16`; when the left side decides, execution resumes after the call | retail `TestInfo.TestContinueWhile`: size 10 = 9-byte operand + `0x16` |
 | `0x05` switch evaluates the cases in turn (`0x0A`: u16 offset of the next case, `0xFFFF` = default) and resumes at the first match; a case reached by falling through skips its value | `TestInfo.TestSwitch` logs its success |
 | Omitted optional parameters are `0x0B` (or missing before `0x16`) and start as zero | `TestInfo.TestOptionalOut` logs its success |
+| Objects: instance (`0x01`) and default (`0x02`) variables name the property declaration; a class's defaults are its super's plus its own tagged list (all 1,604 retail classes build them) | `TestInfo.TestStatic` asserts `default.xnum == 777` |
+| Context `0x19` / class context `0x12`: object expr, u16 skip, u8 size, expr. The inner variable or call uses the context object; arguments and array indices are evaluated with the caller's self. A None context skips u16 bytes (counted after the size byte) and yields zero | `TestInfo.TestNullContext`; synthetic test |
+| Array element `0x1A`: index first, then the array (any variable, also inside a context) | retail `TestInfo.TestX` bytes; `TestInfo.temp` |
+| Static array dimension is a u16; retail goes up to 16,384 (`udemo.DemoPlaybackSpec.HideActors`) | sweep over all property declarations |
 | Conversions `0x39`–`0x59` (e.g. `0x53` int → string, `0x55` float → string) | public UE1 documentation; `0x55` with 6 decimals and the others' text formats are **unverified** |
 
-Retail checks (`build/ut_script <UT99_DIR> Package.Class.Function [args]`): `Engine.Console.FormatFloat 1.2345` → `"1.23"`, `Botpack.TournamentScoreBoard.TwoDigitString 5` → `"05"`, and `Engine.TestInfo` `TestContinueWhile`, `TestContinueDoUntil`, `TestContinueFor`, `TestSwitch`, `TestOptionalOut` run to the end with every `assert` passing and the log their source text predicts.
+Retail checks (`build/ut_script <UT99_DIR> Package.Class.Function [args]`): `Engine.Console.FormatFloat 1.2345` → `"1.23"`, `Botpack.TournamentScoreBoard.TwoDigitString 5` → `"05"`, and `Engine.TestInfo` `TestContinueWhile`, `TestContinueDoUntil`, `TestContinueFor`, `TestSwitch`, `TestOptionalOut` run to the end with every `assert` passing and the log their source text predicts; so do `TestStatic`, `TestQ`, `TestStructBools`, `TestX`, `TestNullContext`, `TestLimitor` and `PostBeginPlay`. `TestInfo.Tick` runs until `GetPropertyText` (not implemented).
 
-Not yet: objects (`self`, instance and default variables, contexts), states and labels, iterators, `new`, casts, struct member assignment, arrays.
+Not yet: states and labels, iterators, `new`, dynamic arrays, binary struct defaults (other than Vector / Rotator), engine natives (actors, spawning, timers).
 
 ## Numbers (retail `System/*.u`)
 

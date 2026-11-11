@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
         ut::Value ret;
         std::string error;
         try {
-            ret = vm.call(f, args);
+            ret = vm.call(f, vm.spawn(vm.object(*p, cls_ref)), args);
         } catch (const std::exception& e) {
             error = e.what();
         }

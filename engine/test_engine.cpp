@@ -394,11 +394,12 @@ static void test_read_class() {
 // 1 class T; 2 Mul(A, B, optional out C) int: C = A * B; return C; 3-6 its properties;
 // 7 Multiply_IntInt (native 144) + 8-10; 11 OrOr_BoolBool (native 132) + 12-14; 15 Or() bool + 16.
 // Or returns false || (true || native 0xF0()): the unbound native must be skipped by the short circuit.
+// 17 instance variable int X of T (default 5); 18 Get(): X = 3; return X * default.X; 20 Null(): return None.X * 4.
 static Package vm_package() {
     Package p;
     p.version = 69;
     p.names = {"None", "T", "Mul", "A", "B", "C", "ReturnValue", "Multiply_IntInt", "Function", "IntProperty",
-               "Core", "Class", "OrOr_BoolBool", "BoolProperty", "Or"};
+               "Core", "Class", "OrOr_BoolBool", "BoolProperty", "Or", "X", "Get", "Null"};
     p.imports = {{"Core", "Class", 0, "Function"}, {"Core", "Class", 0, "IntProperty"}, {"Core", "Class", 0, "BoolProperty"}};
     auto add = [&](int32_t cls, int32_t outer, const char* name, const Bytes& d) {
         p.exports.push_back({cls, 0, outer, name, 0, int32_t(d.size()), int32_t(p.data.size())});
@@ -416,7 +417,14 @@ static Package vm_package() {
         put(b, native); b.push_back(0); put(b, flags);
         return b;
     };
-    add(0, 0, "T", {});
+    Bytes cls;
+    for (int i = 0; i < 5; i++) put(cls, cindex(0));                          // super .. friendly name
+    put(cls, int32_t(0)); put(cls, int32_t(0)); put(cls, uint32_t(0));        // line, text pos, no script
+    put(cls, uint64_t(0)); put(cls, uint64_t(0)); put(cls, uint16_t(0xFFFF)); put(cls, uint32_t(0));  // state
+    put(cls, uint32_t(0)); cls.insert(cls.end(), 16, 0);                      // flags, guid
+    for (int i = 0; i < 4; i++) put(cls, cindex(0));                          // deps, imports, within, config
+    put(cls, cindex(15)); cls.push_back(0x22); put(cls, int32_t(5)); put(cls, cindex(0));  // defaults: X=5
+    add(0, 0, "T", cls);
     Bytes mul = {0x0F, 0x00};
     put(mul, cindex(5)); mul.push_back(0x90);
     mul.push_back(0x00); put(mul, cindex(3)); mul.push_back(0x00); put(mul, cindex(4)); mul.push_back(0x16);
@@ -437,6 +445,17 @@ static Package vm_package() {
     Bytes orc = {0x04, 0x84, 0x28, 0x18, 9, 0, 0x84, 0x27, 0x18, 3, 0, 0xF0, 0x16, 0x16, 0x16};
     add(-1, 1, "Or", func(16, orc, 15, 0, 0));
     add(-3, 15, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    add(-2, 1, "X", prop(0, 0));
+    Bytes get = {0x0F, 0x01};
+    put(get, cindex(17)); get.push_back(0x1D); put(get, int32_t(3));
+    get.push_back(0x04); get.push_back(0x90); get.push_back(0x01); put(get, cindex(17));
+    get.push_back(0x02); put(get, cindex(17)); get.push_back(0x16);
+    add(-1, 1, "Get", func(19, get, 24, 0, 0));
+    add(-2, 18, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    Bytes null = {0x04, 0x90, 0x19, 0x2A, 5, 0, 4, 0x01};
+    put(null, cindex(17)); null.push_back(0x2C); null.push_back(4); null.push_back(0x16);
+    add(-1, 1, "Null", func(21, null, 15, 0, 0));
+    add(-2, 20, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
     return p;
 }
 
@@ -448,15 +467,21 @@ static void test_vm() {
     assert(mul.locals.size() == 4 && mul.locals[2].type == VT::Int && mul.code.size() == 24);
     std::vector<Value> args = {Value::of(VT::Int), Value::of(VT::Int), Value::of(VT::Int)};
     args[0].i = 6, args[1].i = -7;
-    Value r = vm.call(mul, args);
+    Value r = vm.call(mul, nullptr, args);
     assert(r.t == VT::Int && r.i == -42 && args[2].i == -42);  // return value and out parameter
     std::vector<Value> none;
-    Value b = vm.call(vm.function(p, 15), none);
+    Value b = vm.call(vm.function(p, 15), nullptr, none);
     assert(b.t == VT::Bool && b.i == 1);
+    Obj* t = vm.object(p, 1);
+    Obj* self = vm.spawn(t);
+    assert(vm.call(vm.function(p, 18), self, none).i == 15);              // instance X = 3 times default X = 5
+    assert(self->vars[vm.object(p, 17)][0].i == 3 && vm.defaults(t)->vars[vm.object(p, 17)][0].i == 5);
+    Value z = vm.call(vm.function(p, 20), self, none);
+    assert(z.t == VT::Int && z.i == 0 && vm.log.back().find("accessed None") != std::string::npos);
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);
-    assert(throws([&] { vm2.call(vm2.function(p, 15), none); }));
+    assert(throws([&] { vm2.call(vm2.function(p, 15), nullptr, none); }));
 }
 
 static void test_unpack_vert() {

@@ -91,7 +91,8 @@ VT type_of(const std::string& prop_class, const std::string& struct_name) {
     if (prop_class == "ObjectProperty" || prop_class == "ClassProperty") return VT::Object;
     if (prop_class == "StructProperty" && struct_name == "Vector") return VT::Vector;
     if (prop_class == "StructProperty" && struct_name == "Rotator") return VT::Rotator;
-    return VT::None;  // other structs, arrays, maps: not supported yet
+    if (prop_class == "StructProperty") return VT::Struct;
+    return VT::None;  // dynamic arrays, maps: not supported yet
 }
 
 bool equal(const Value& a, const Value& b) {
@@ -101,6 +102,13 @@ bool equal(const Value& a, const Value& b) {
         case VT::Name: return iequal(a.s, b.s);
         case VT::Vector: return a.v[0] == b.v[0] && a.v[1] == b.v[1] && a.v[2] == b.v[2];
         case VT::Rotator: return a.r[0] == b.r[0] && a.r[1] == b.r[1] && a.r[2] == b.r[2];
+        case VT::Object: return a.o == b.o;
+        case VT::Bool: return !a.i == !b.i;
+        case VT::Struct:
+            if (a.fields.size() != b.fields.size()) return false;
+            for (size_t k = 0; k < a.fields.size(); k++)
+                if (!equal(a.fields[k], b.fields[k])) return false;
+            return true;
         default: return a.i == b.i;
     }
 }
@@ -143,7 +151,7 @@ Value convert(uint8_t t, const Value& a) {  // tokens 0x39..0x59, names from pub
         case 0x43: return make(VT::Byte, to_int(a.f) & 0xFF);  // FloatToByte
         case 0x44: return make(VT::Int, to_int(a.f));          // FloatToInt
         case 0x45: return make(VT::Bool, a.f != 0);            // FloatToBool
-        case 0x47: return make(VT::Bool, a.i != 0);            // ObjectToBool
+        case 0x47: return make(VT::Bool, a.o != nullptr);      // ObjectToBool
         case 0x48: return make(VT::Bool, !iequal(a.s, "None"));  // NameToBool
         case 0x49: return make(VT::Byte, int32_t(std::strtol(a.s.c_str(), nullptr, 10)) & 0xFF);  // StringToByte
         case 0x4A: return make(VT::Int, int32_t(std::strtol(a.s.c_str(), nullptr, 10)));          // StringToInt
@@ -170,9 +178,6 @@ Value convert(uint8_t t, const Value& a) {  // tokens 0x39..0x59, names from pub
         case 0x52: case 0x53: return str(std::to_string(a.i));        // ByteToString, IntToString
         case 0x54: return str(a.i ? "True" : "False");                 // BoolToString
         case 0x55: return str(fmt("%f", double(a.f)));                 // FloatToString (unverified: 6 decimals)
-        case 0x56:  // ObjectToString
-            if (a.i == 0) return str("None");
-            throw std::runtime_error("object to string not supported yet");
         case 0x57: return str(a.s);  // NameToString
         case 0x58:  // VectorToString
             return str(fmt("%f", double(a.v[0])) + "," + fmt("%f", double(a.v[1])) + "," + fmt("%f", double(a.v[2])));
@@ -183,14 +188,14 @@ Value convert(uint8_t t, const Value& a) {  // tokens 0x39..0x59, names from pub
 }
 
 // Reads one property declaration (an export of class *Property): name, type, flags, array size.
-Local read_local(const Package& p, int32_t ref, int32_t* next) {
+Local read_local(const Package& p, int32_t ref) {
     const Export& e = p.exports[size_t(ref - 1)];
     size_t end = 0;
     read_properties(p, e, &end);
     Reader r(p.data, end);
-    r.index();          // super
-    *next = r.index();
+    r.index();  // super
     Local l;
+    l.next = r.index();
     l.name = e.name;
     l.ref = ref;
     std::string cls = object_name(p, e.class_ref);
@@ -201,11 +206,29 @@ Local read_local(const Package& p, int32_t ref, int32_t* next) {
     r.index();  // category
     if (l.flags & 0x20) r.u16();  // rep offset
     std::string struct_name;
-    if (cls == "StructProperty") struct_name = object_name(p, r.index());
+    if (cls == "StructProperty") {
+        l.struct_ref = r.index();
+        struct_name = object_name(p, l.struct_ref);
+    }
     l.type = type_of(cls, struct_name);
     l.type_name = struct_name.empty() ? cls : struct_name;
-    if (l.dim < 1 || l.dim > 4096) throw std::runtime_error("bad array dimension");
+    if (l.dim < 1) throw std::runtime_error("bad array dimension");  // u16: retail goes up to 16384
     return l;
+}
+
+// First member of a Struct export (also State, Class): tagged properties, super, next, script text, children.
+int32_t struct_children(const Package& p, int32_t ref) {
+    const Export& e = p.exports[size_t(ref - 1)];
+    size_t end = size_t(e.offset);
+    if (e.class_ref != 0) read_properties(p, e, &end);  // class objects have no leading property list
+    Reader r(p.data, end);
+    r.index(), r.index(), r.index();
+    return r.index();
+}
+
+bool is_property(const Package& p, const Export& e) {
+    std::string cls = object_name(p, e.class_ref);
+    return cls.size() > 8 && cls.compare(cls.size() - 8, 8, "Property") == 0;
 }
 
 }  // namespace
@@ -231,17 +254,15 @@ Function load_function(const Package& p, int32_t ref) {
     f.flags = r.u32();
     for (size_t n = 0; child > 0; n++) {
         if (size_t(child) > p.exports.size() || n > p.exports.size()) throw std::runtime_error("bad function children");
-        int32_t next = 0;
-        f.locals.push_back(read_local(p, child, &next));
-        child = next;
+        f.locals.push_back(read_local(p, child));
+        child = f.locals.back().next;
     }
     return f;
 }
 
 struct Vm::Frame {
     const Function& f;
-    const Package* self_pkg;
-    int32_t self_cls;
+    Obj* self;
     std::vector<std::vector<Value>> vars;
     size_t pc = 0;
     bool done = false;
@@ -279,25 +300,52 @@ struct Vm::Frame {
         if (to > f.code.size()) throw std::runtime_error(f.name + ": jump out of the function");
         pc = to;
     }
-    std::vector<Value>& var(int32_t ref) {
+    std::vector<Value>& local(int32_t ref) {
         for (size_t k = 0; k < f.locals.size(); k++)
             if (f.locals[k].ref == ref) return vars[k];
         throw std::runtime_error(f.name + ": variable is not a local of this function");
     }
 };
 
-const Function& Vm::function(const Package& p, int32_t ref) {
-    const Package* pkg = &p;
-    if (ref < 0) {
-        if (!packages_) throw std::runtime_error("import without a package set");
-        Object o = packages_->resolve(p, ref);
-        if (!o.exp) throw std::runtime_error("unresolved function import " + object_name(p, ref));
-        pkg = o.package;
-        ref = int32_t(o.exp - pkg->exports.data()) + 1;
+namespace {
+
+Value read(const Value* v, int comp) {
+    if (!v) return Value();  // through a None context
+    if (comp < 0) return *v;
+    if (v->t == VT::Vector) {
+        Value x = Value::of(VT::Float);
+        x.f = v->v[comp];
+        return x;
     }
-    auto key = std::make_pair(pkg, ref);
+    return make(VT::Int, v->r[comp]);
+}
+
+void write(Value* v, int comp, const Value& x) {
+    if (!v) return;
+    if (comp < 0) assign(*v, x);
+    else if (v->t == VT::Vector) v->v[comp] = x.f;
+    else v->r[comp] = x.i;
+}
+
+int member_index(const Value& s, const std::string& m) {  // component of Vector / Rotator, or struct field
+    const char* vec[] = {"X", "Y", "Z"};
+    const char* rot[] = {"Pitch", "Yaw", "Roll"};
+    for (int k = 0; k < 3; k++)
+        if ((s.t == VT::Vector && iequal(m, vec[k])) || (s.t == VT::Rotator && iequal(m, rot[k]))) return k;
+    if (s.t == VT::Struct && s.field_names)
+        for (size_t k = 0; k < s.field_names->size() && k < s.fields.size(); k++)
+            if (iequal((*s.field_names)[k], m)) return int(k);
+    throw std::runtime_error("no struct member " + m);
+}
+
+}  // namespace
+
+const Function& Vm::function(const Package& p, int32_t ref) {
+    Obj* o = object(p, ref);
+    if (!o) throw std::runtime_error("function ref None");
+    auto key = std::make_pair(o->pkg, o->ref);
     auto it = functions_.find(key);
-    if (it == functions_.end()) it = functions_.emplace(key, load_function(*pkg, ref)).first;
+    if (it == functions_.end()) it = functions_.emplace(key, load_function(*o->pkg, o->ref)).first;
     return it->second;
 }
 
@@ -311,39 +359,214 @@ void Vm::bind_natives(const Package& p) {
     }
 }
 
-const Function* Vm::find_virtual(const Package& p0, int32_t cls, const std::string& name) {
-    const Package* p = &p0;
-    for (int guard = 0; guard < 64 && cls != 0; guard++) {
-        if (cls < 0) {  // super class in another package
-            if (!packages_) return nullptr;
-            Object o = packages_->resolve(*p, cls);
-            if (!o.exp) return nullptr;
-            p = o.package;
-            cls = int32_t(o.exp - p->exports.data()) + 1;
-        }
-        if (size_t(cls) > p->exports.size()) throw std::runtime_error("class ref out of range");
-        for (size_t i = 0; i < p->exports.size(); i++) {
-            const Export& e = p->exports[i];
-            if (e.package == cls && iequal(e.name, name) && object_name(*p, e.class_ref) == "Function")
-                return &function(*p, int32_t(i + 1));
-        }
-        cls = read_class(*p, p->exports[size_t(cls - 1)]).super_ref;
+Obj* Vm::object(const Package& p, int32_t ref) {
+    if (ref == 0) return nullptr;
+    const Package* pkg = &p;
+    if (ref < 0) {
+        if (!packages_) throw std::runtime_error("import without a package set: " + object_name(p, ref));
+        Object o = packages_->resolve(p, ref);
+        if (!o.exp) throw std::runtime_error("unresolved import " + object_name(p, ref));
+        pkg = o.package;
+        ref = int32_t(o.exp - pkg->exports.data()) + 1;
     }
-    return nullptr;
+    if (size_t(ref) > pkg->exports.size()) throw std::runtime_error("object ref out of range");
+    std::unique_ptr<Obj>& slot = objects_[{pkg, ref}];
+    if (!slot) {
+        slot = std::make_unique<Obj>();
+        slot->pkg = pkg;
+        slot->ref = ref;
+    }
+    return slot.get();
 }
 
-Value* Vm::lvalue(Frame& fr) {
+Obj* Vm::super_of(Obj* cls) {
+    if (!cls || !cls->pkg) return nullptr;
+    auto it = supers_.find(cls);
+    if (it != supers_.end()) return it->second;
+    const Export& e = cls->pkg->exports[size_t(cls->ref - 1)];
+    Obj* s = e.class_ref == 0 ? object(*cls->pkg, read_class(*cls->pkg, e).super_ref) : nullptr;
+    supers_[cls] = s;
+    return s;
+}
+
+const Local& Vm::decl(Obj* prop) {
+    auto it = decls_.find(prop);
+    if (it == decls_.end()) it = decls_.emplace(prop, read_local(*prop->pkg, prop->ref)).first;
+    return it->second;
+}
+
+Value Vm::zero(const Package& p, const Local& l) {
+    Value v = Value::of(l.type);
+    if (l.type != VT::Struct || !l.struct_ref) return v;
+    Obj* st = object(p, l.struct_ref);
+    std::vector<std::string>& names = struct_names_[st];
+    bool fresh = names.empty();
+    // shortcut: struct inheritance and static arrays inside structs (first element only) not handled yet
+    size_t guard = 0;
+    for (int32_t c = struct_children(*st->pkg, st->ref); c > 0; c = decl(object(*st->pkg, c)).next) {
+        if (++guard > st->pkg->exports.size()) throw std::runtime_error("bad struct members");
+        const Local& m = decl(object(*st->pkg, c));
+        if (!is_property(*st->pkg, st->pkg->exports[size_t(c - 1)])) continue;
+        v.fields.push_back(zero(*st->pkg, m));
+        if (fresh) names.push_back(m.name);
+    }
+    v.field_names = &names;
+    return v;
+}
+
+std::vector<Value>& Vm::var(Obj* o, const Package& p, int32_t prop_ref) {
+    Obj* prop = object(p, prop_ref);
+    if (!prop) throw std::runtime_error("variable ref None");
+    auto it = o->vars.find(prop);
+    if (it != o->vars.end()) return it->second;
+    const Local& l = decl(prop);
+    return o->vars.emplace(prop, std::vector<Value>(size_t(l.dim), zero(*prop->pkg, l))).first->second;
+}
+
+Obj* Vm::defaults(Obj* cls) {
+    if (!cls) throw std::runtime_error("default object of None");
+    if (!cls->defaults) {
+        instances_.push_back(std::make_unique<Obj>());
+        Obj* d = instances_.back().get();
+        d->cls = cls;
+        cls->defaults = d;
+        if (Obj* s = super_of(cls)) d->vars = defaults(s)->vars;
+        apply_defaults(cls, d);
+    }
+    return cls->defaults;
+}
+
+Obj* Vm::spawn(Obj* cls) {
+    Obj* d = defaults(cls);
+    instances_.push_back(std::make_unique<Obj>());
+    Obj* o = instances_.back().get();
+    o->cls = cls;
+    o->vars = d->vars;
+    return o;
+}
+
+void Vm::apply_defaults(Obj* cls, Obj* d) {
+    const Package& p = *cls->pkg;
+    for (const Property& tag : read_class(p, p.exports[size_t(cls->ref - 1)]).defaults) {
+        Obj* prop = nullptr;
+        for (Obj* c = cls; c && !prop; c = super_of(c))
+            for (size_t i = 0; i < c->pkg->exports.size() && !prop; i++) {
+                const Export& e = c->pkg->exports[i];
+                if (e.package == c->ref && iequal(e.name, tag.name) && is_property(*c->pkg, e))
+                    prop = object(*c->pkg, int32_t(i + 1));
+            }
+        if (!prop) continue;  // shortcut: a default for a property we cannot find is dropped, as for removed vars
+        const Local& l = decl(prop);
+        std::vector<Value>& slots = var(d, *prop->pkg, prop->ref);
+        if (tag.index < 0 || size_t(tag.index) >= slots.size()) throw std::runtime_error("default index out of range");
+        Value& v = slots[size_t(tag.index)];
+        switch (tag.type) {
+            case PropType::Byte: v.i = prop_byte(p, tag); break;
+            case PropType::Int: v.i = prop_int(p, tag); break;
+            case PropType::Bool: v.i = tag.bool_value; break;
+            case PropType::Float: v.f = prop_float(p, tag); break;
+            case PropType::Str: v.s = prop_string(p, tag); break;
+            case PropType::Name: {
+                int32_t n = prop_ref(p, tag);
+                if (n < 0 || size_t(n) >= p.names.size()) throw std::runtime_error("bad name in defaults");
+                v.s = p.names[size_t(n)];
+                break;
+            }
+            case PropType::Object: case PropType::Class: v.o = object(p, prop_ref(p, tag)); break;
+            case PropType::Struct:
+                if (l.type == VT::Vector) {
+                    Vec3 x = prop_vector(p, tag);
+                    v.v[0] = x.x, v.v[1] = x.y, v.v[2] = x.z;
+                } else if (l.type == VT::Rotator && tag.size >= 12) {
+                    Reader r(p.data, tag.value_pos);
+                    for (int32_t& c : v.r) c = r.i32();
+                }  // shortcut: other struct defaults stay zero until their binary layout is decoded
+                break;
+            default: break;  // dynamic arrays, maps: not supported yet
+        }
+    }
+}
+
+const Function* Vm::find_virtual(Obj* cls, const std::string& name) {
+    auto key = std::make_pair(static_cast<const Obj*>(cls), lower(name));
+    auto it = virtuals_.find(key);
+    if (it != virtuals_.end()) return it->second;
+    const Function* found = nullptr;
+    for (Obj* c = cls; c && !found; c = super_of(c))
+        for (size_t i = 0; i < c->pkg->exports.size() && !found; i++) {
+            const Export& e = c->pkg->exports[i];
+            if (e.package == c->ref && iequal(e.name, name) && object_name(*c->pkg, e.class_ref) == "Function")
+                found = &function(*c->pkg, int32_t(i + 1));
+        }
+    virtuals_[key] = found;
+    return found;
+}
+
+void Vm::warn(const Frame& fr, const std::string& what) { log.push_back("ScriptWarning: " + fr.f.name + " " + what); }
+
+Value Vm::context(Frame& fr, Obj* ctx, bool cls, Ref* place) {
+    Obj* o = eval(fr, ctx).o;
+    uint16_t skip = fr.u16();
+    fr.u8();  // result size
+    if (cls && o) o = defaults(o);
+    if (!o) {  // None context: the expression is skipped and yields zero
+        warn(fr, "accessed None");
+        fr.jump(fr.pc + skip);
+        if (place) *place = Ref{};
+        return Value();
+    }
+    if (place) {
+        *place = lvalue(fr, o);
+        return Value();
+    }
+    return eval(fr, o);
+}
+
+Vm::Ref Vm::lvalue(Frame& fr, Obj* ctx) {
     uint8_t t = fr.u8();
-    if (t == 0x00) return &fr.var(fr.i32())[0];
-    if (t == 0x2D) return lvalue(fr);  // bool variable
-    throw std::runtime_error(fr.f.name + ": token " + std::to_string(t) + " is not assignable yet");
+    auto slots = [&](uint8_t tok) -> std::vector<Value>& {  // 0x00 local, 0x01 instance, 0x02 default variable
+        if (tok == 0x00) return fr.local(fr.i32());
+        Obj* o = tok == 0x01 ? ctx : ctx && ctx->cls ? defaults(ctx->cls) : nullptr;
+        if (!o) throw std::runtime_error(fr.f.name + ": object variable without an object");
+        return var(o, *fr.f.pkg, fr.i32());
+    };
+    switch (t) {
+        case 0x00: case 0x01: case 0x02: {
+            std::vector<Value>& a = slots(t);
+            return {&a[0], -1, &a};
+        }
+        case 0x2D: return lvalue(fr, ctx);  // bool variable
+        case 0x1A: {  // array element: index with the caller's self, then the array in the context
+            int32_t i = eval(fr, fr.self).i;
+            Ref base = lvalue(fr, ctx);
+            if (!base.v) return base;  // None context
+            if (!base.array) throw std::runtime_error(fr.f.name + ": element of something that is not an array");
+            std::vector<Value>& a = *base.array;
+            if (i < 0 || size_t(i) >= a.size()) {  // shortcut: clamped with a warning, unverified against the original
+                warn(fr, "accessed array out of bounds");
+                i = i < 0 ? 0 : int32_t(a.size() - 1);
+            }
+            return {&a[size_t(i)]};
+        }
+        case 0x36: {
+            std::string m = object_name(*fr.f.pkg, fr.i32());
+            Ref base = lvalue(fr, ctx);
+            if (!base.v) return base;
+            if (base.comp >= 0) throw std::runtime_error(fr.f.name + ": member of a component");
+            int k = member_index(*base.v, m);
+            if (base.v->t == VT::Struct) return {&base.v->fields[size_t(k)]};
+            return {base.v, k};
+        }
+        case 0x12: case 0x19: {
+            Ref place;
+            context(fr, ctx, t == 0x12, &place);
+            return place;
+        }
+        default: throw std::runtime_error(fr.f.name + ": token " + std::to_string(t) + " is not assignable yet");
+    }
 }
 
-Value Vm::call(const Function& f, std::vector<Value>& args) {
-    int32_t cls = f.pkg->exports[size_t(f.ref - 1)].package;  // outer: the class, or a state inside it
-    while (cls > 0 && size_t(cls) <= f.pkg->exports.size() && f.pkg->exports[size_t(cls - 1)].class_ref != 0)
-        cls = f.pkg->exports[size_t(cls - 1)].package;
-    Frame fr{f, f.pkg, cls, {}};
+Value Vm::call(const Function& f, Obj* self, std::vector<Value>& args) {
     if (f.flags & kFuncNative) throw std::runtime_error(f.name + " is native; call it from bytecode");
     struct Depth {  // released on exceptions too
         int& d;
@@ -355,12 +578,13 @@ Value Vm::call(const Function& f, std::vector<Value>& args) {
         }
         ~Depth() { --d; }
     } guard(depth_);
+    Frame fr{f, self, {}};
     size_t a = 0;
     for (const Local& l : f.locals) {
-        fr.vars.emplace_back(size_t(l.dim), Value::of(l.type));
+        fr.vars.emplace_back(size_t(l.dim), zero(*f.pkg, l));
         if ((l.flags & kParm) && !(l.flags & kReturnParm) && a < args.size()) assign(fr.vars.back()[0], args[a++]);
     }
-    while (!fr.done && fr.pc < f.code.size()) eval(fr);
+    while (!fr.done && fr.pc < f.code.size()) eval(fr, self);
     a = 0;
     Value ret;
     for (size_t k = 0; k < f.locals.size(); k++) {
@@ -371,74 +595,99 @@ Value Vm::call(const Function& f, std::vector<Value>& args) {
     return ret;
 }
 
-Value Vm::call_script(Frame& fr, const Function& f) {
+Value Vm::call_script(Frame& fr, Obj* target, const Function& f) {
     std::vector<Value> args;
-    std::vector<Value*> outs;
+    std::vector<Ref> outs;
     for (const Local& l : f.locals) {
         if (!(l.flags & kParm) || (l.flags & kReturnParm) || fr.peek() == 0x16) continue;
         if (fr.peek() == 0x0B) {  // omitted optional parameter: zero
             fr.pc++;
-            args.push_back(Value::of(l.type));
-            outs.push_back(nullptr);
+            args.push_back(zero(*f.pkg, l));
+            outs.push_back({});
         } else if (l.flags & kOutParm) {
-            outs.push_back(lvalue(fr));
-            args.push_back(*outs.back());
+            outs.push_back(lvalue(fr, fr.self));
+            args.push_back(read(outs.back().v, outs.back().comp));
         } else {
-            args.push_back(eval(fr));
-            outs.push_back(nullptr);
+            args.push_back(eval(fr, fr.self));
+            outs.push_back({});
         }
     }
     if (fr.u8() != 0x16) throw std::runtime_error(fr.f.name + ": too many arguments to " + f.name);
-    Value ret = call(f, args);
-    for (size_t k = 0; k < outs.size(); k++)
-        if (outs[k]) assign(*outs[k], args[k]);
+    Value ret = call(f, target, args);
+    for (size_t k = 0; k < outs.size(); k++) write(outs[k].v, outs[k].comp, args[k]);
     return ret;
 }
 
-Value Vm::call_native(Frame& fr, const Bound& b) {
+Value Vm::call_named(Frame& fr, Obj* target, const Function& f) {
+    if (!(f.flags & kFuncNative)) return call_script(fr, target, f);
+    auto it = by_name_.find(lower(f.name));
+    return call_native(fr, {&f, it == by_name_.end() ? nullptr : &it->second}, target);
+}
+
+Value Vm::call_native(Frame& fr, const Bound& b, Obj* self) {
     const Function& d = *b.decl;
     std::vector<Value> vals;
     std::vector<Value*> ptrs;
+    std::vector<std::pair<Value*, Ref>> outs;  // copied back after the call
     vals.reserve(d.locals.size());  // pointers into vals must stay valid
     Value ret;
     bool ended = false;
     for (const Local& l : d.locals) {
         if (l.flags & kReturnParm) ret = Value::of(l.type);
         if (!(l.flags & kParm) || (l.flags & kReturnParm)) continue;
-        if (fr.peek() == 0x16) {
+        if (ended || fr.peek() == 0x16) {
             ptrs.push_back(nullptr);  // omitted trailing optional
         } else if (fr.peek() == 0x0B) {
             fr.pc++;
             ptrs.push_back(nullptr);
         } else if (l.flags & kOutParm) {
-            ptrs.push_back(lvalue(fr));
+            Ref place = lvalue(fr, fr.self);
+            vals.push_back(read(place.v, place.comp));
+            ptrs.push_back(&vals.back());
+            outs.emplace_back(&vals.back(), place);
         } else if ((l.flags & kSkipParm) && fr.peek() == 0x18) {
             // Right operand of && and ||, wrapped with a size that covers it and the closing 0x16 (short circuit).
             fr.pc++;
             uint16_t size = fr.u16();
             bool skip = !ptrs.empty() && ptrs[0] && (iequal(d.name, "AndAnd_BoolBool") ? !ptrs[0]->i : ptrs[0]->i);
             if (skip) fr.jump(fr.pc + size), ended = true;
-            vals.push_back(skip ? Value::of(l.type) : eval(fr));
+            vals.push_back(skip ? Value::of(l.type) : eval(fr, fr.self));
             ptrs.push_back(&vals.back());
         } else {
-            vals.push_back(eval(fr));
+            vals.push_back(eval(fr, fr.self));
             vals.back().t = l.type;
             ptrs.push_back(&vals.back());
         }
     }
     if (!ended && fr.u8() != 0x16) throw std::runtime_error(fr.f.name + ": too many arguments to native " + d.name);
     if (!b.impl) throw std::runtime_error("native " + d.name + " (" + std::to_string(d.native) + ") not implemented");
-    (*b.impl)(ptrs, ret);
+    (*b.impl)(self, ptrs, ret);
+    for (auto& [v, place] : outs) write(place.v, place.comp, *v);
     return ret;
 }
 
-Value Vm::eval(Frame& fr) {
+std::string Vm::name_of(const Obj* o) const {
+    if (!o) return "None";
+    if (o->pkg) return o->pkg->exports[size_t(o->ref - 1)].name;
+    return o->cls->pkg->exports[size_t(o->cls->ref - 1)].name;  // shortcut: instances are not numbered yet
+}
+
+bool Vm::is_a(Obj* cls, const Obj* base) {
+    for (int guard = 0; cls && guard < 256; cls = super_of(cls), guard++)
+        if (cls == base) return true;
+    return false;
+}
+
+Value Vm::eval(Frame& fr, Obj* ctx) {
     uint8_t t = fr.peek();
-    if (t == 0x00 || t == 0x2D) return *lvalue(fr);
+    if (t == 0x00 || t == 0x01 || t == 0x02 || t == 0x2D || t == 0x1A) {
+        Ref place = lvalue(fr, ctx);
+        return read(place.v, place.comp);
+    }
     fr.pc++;
     switch (t) {
         case 0x04: {  // return
-            Value v = eval(fr);
+            Value v = eval(fr, fr.self);
             for (size_t k = 0; k < fr.f.locals.size(); k++)
                 if ((fr.f.locals[k].flags & kReturnParm) && v.t != VT::None) assign(fr.vars[k][0], v);
             fr.done = true;
@@ -446,55 +695,63 @@ Value Vm::eval(Frame& fr) {
         }
         case 0x05: {  // switch: evaluates the cases until one matches, then runs from there
             fr.u8();  // value size
-            Value v = eval(fr);
+            Value v = eval(fr, fr.self);
             for (;;) {
                 if (fr.pc >= fr.f.code.size() || fr.peek() != 0x0A) return Value();  // no case matched
                 fr.pc++;
                 uint16_t next = fr.u16();
-                if (next == 0xFFFF || equal(v, eval(fr))) return Value();
+                if (next == 0xFFFF || equal(v, eval(fr, fr.self))) return Value();
                 fr.jump(next);
             }
         }
         case 0x06: fr.jump(fr.u16()); return Value();
         case 0x07: {
             uint16_t to = fr.u16();
-            if (!eval(fr).i) fr.jump(to);
+            if (!eval(fr, fr.self).i) fr.jump(to);
             return Value();
         }
         case 0x08: fr.done = true; return Value();
         case 0x09: {
             uint16_t line = fr.u16();
-            if (!eval(fr).i) throw std::runtime_error(fr.f.name + ": assertion failed at line " + std::to_string(line));
+            if (!eval(fr, fr.self).i) throw std::runtime_error(fr.f.name + ": assertion failed at line " + std::to_string(line));
             return Value();
         }
         case 0x0A:  // reached by falling through: skip the case value
-            if (fr.u16() != 0xFFFF) eval(fr);
+            if (fr.u16() != 0xFFFF) eval(fr, fr.self);
             return Value();
         case 0x0B: return Value();
-        case 0x0E: eval(fr); return Value();
+        case 0x0E: eval(fr, fr.self); return Value();
         case 0x0F: case 0x14: {
-            Value* d = lvalue(fr);
-            assign(*d, eval(fr));
+            Ref d = lvalue(fr, fr.self);
+            write(d.v, d.comp, eval(fr, fr.self));
             return Value();
         }
+        case 0x12: case 0x19: return context(fr, ctx, t == 0x12, nullptr);
+        case 0x13: {  // class<Base>(expr): the class if it is Base or a subclass, else None
+            Obj* base = object(*fr.f.pkg, fr.i32());
+            Value c = eval(fr, fr.self);
+            if (!is_a(c.o, base)) c.o = nullptr;
+            return c;
+        }
+        case 0x2E: {  // Class(expr): the object if its class is Class or a subclass, else None
+            Obj* base = object(*fr.f.pkg, fr.i32());
+            Value x = eval(fr, fr.self);
+            if (x.o && !is_a(x.o->cls, base)) x.o = nullptr;  // shortcut: package objects (no cls) always pass
+            x.t = VT::Object;
+            return x;
+        }
         case 0x16: return Value();
+        case 0x17: { Value v = Value::of(VT::Object); v.o = fr.self; return v; }
         case 0x1B: {
             std::string n = fr.name();
-            const Function* g = find_virtual(*fr.self_pkg, fr.self_cls, n);
+            if (!ctx || !ctx->cls) throw std::runtime_error(fr.f.name + ": call to " + n + " without an object");
+            const Function* g = find_virtual(ctx->cls, n);
             if (!g) throw std::runtime_error(fr.f.name + ": no function " + n);
-            if (g->flags & kFuncNative) {
-                auto it = by_name_.find(lower(g->name));
-                return call_native(fr, {g, it == by_name_.end() ? nullptr : &it->second});
-            }
-            return call_script(fr, *g);
+            return call_named(fr, ctx, *g);
         }
         case 0x1C: {
             const Function& g = function(*fr.f.pkg, fr.i32());
-            if (g.flags & kFuncNative) {
-                auto it = by_name_.find(lower(g.name));
-                return call_native(fr, {&g, it == by_name_.end() ? nullptr : &it->second});
-            }
-            return call_script(fr, g);
+            return call_named(fr, ctx, g);
         }
         case 0x1D: return make(VT::Int, fr.i32());
         case 0x1E: { Value v = Value::of(VT::Float); v.f = fr.f32(); return v; }
@@ -503,7 +760,7 @@ Value Vm::eval(Frame& fr) {
             for (uint8_t c; (c = fr.u8()) != 0;) s.push_back(c);
             return str(encode(s));
         }
-        case 0x20: return make(VT::Object, fr.i32());
+        case 0x20: { Value v = Value::of(VT::Object); v.o = object(*fr.f.pkg, fr.i32()); return v; }
         case 0x21: { Value v = Value::of(VT::Name); v.s = fr.name(); return v; }
         case 0x22: { Value v = Value::of(VT::Rotator); for (int32_t& c : v.r) c = fr.i32(); return v; }
         case 0x23: { Value v = Value::of(VT::Vector); for (float& c : v.v) c = fr.f32(); return v; }
@@ -512,37 +769,33 @@ Value Vm::eval(Frame& fr) {
         case 0x26: return make(VT::Int, 1);
         case 0x27: return make(VT::Bool, 1);
         case 0x28: return make(VT::Bool, 0);
-        case 0x2A: return make(VT::Object, 0);
+        case 0x2A: return Value::of(VT::Object);
         case 0x2C: return make(VT::Int, fr.u8());
         case 0x34: {
             std::u32string s;
             for (uint16_t c; (c = fr.u16()) != 0;) s.push_back(c);
             return str(encode(s));
         }
-        case 0x36: {  // struct member of Vector / Rotator
+        case 0x36: {  // struct member of a value that is not assignable (e.g. a function result)
             std::string m = object_name(*fr.f.pkg, fr.i32());
-            Value s = eval(fr);
-            const char* vec[] = {"X", "Y", "Z"};
-            const char* rot[] = {"Pitch", "Yaw", "Roll"};
-            for (int k = 0; k < 3; k++) {
-                if (s.t == VT::Vector && iequal(m, vec[k])) { Value v = Value::of(VT::Float); v.f = s.v[k]; return v; }
-                if (s.t == VT::Rotator && iequal(m, rot[k])) return make(VT::Int, s.r[k]);
-            }
-            throw std::runtime_error(fr.f.name + ": struct member " + m + " not supported yet");
+            Value s = eval(fr, ctx);
+            int k = member_index(s, m);
+            return s.t == VT::Struct ? s.fields[size_t(k)] : read(&s, k);
         }
+        case 0x56: return str(name_of(eval(fr, fr.self).o));  // ObjectToString
         default:
-            if (t >= 0x39 && t <= 0x59) return convert(t, eval(fr));
+            if (t >= 0x39 && t <= 0x59) return convert(t, eval(fr, fr.self));
             if (t >= 0x60) {
                 int index = t >= 0x70 ? t : (t - 0x60) * 256 + fr.u8();
                 auto it = by_index_.find(index);
                 if (it == by_index_.end()) throw std::runtime_error("native index " + std::to_string(index) + " not bound");
-                return call_native(fr, it->second);
+                return call_native(fr, it->second, ctx);
             }
             throw std::runtime_error(fr.f.name + ": bytecode token " + std::to_string(t) + " not supported yet");
     }
 }
 
-#define NATIVE(n) by_name_[lower(#n)] = []([[maybe_unused]] std::vector<Value*>& a, [[maybe_unused]] Value& r)
+#define NATIVE(n) by_name_[lower(#n)] = []([[maybe_unused]] Obj* self, [[maybe_unused]] std::vector<Value*>& a, [[maybe_unused]] Value& r)
 
 Vm::Vm(PackageSet* packages) : packages_(packages) {
     // Semantics from the declarations in Core (names, parameter types) and public UnrealScript documentation.
@@ -689,13 +942,17 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
     // Name, Object
     NATIVE(EqualEqual_NameName) { r.i = iequal(a[0]->s, a[1]->s); };
     NATIVE(NotEqual_NameName) { r.i = !iequal(a[0]->s, a[1]->s); };
-    NATIVE(EqualEqual_ObjectObject) { r.i = a[0]->i == a[1]->i; };
-    NATIVE(NotEqual_ObjectObject) { r.i = a[0]->i != a[1]->i; };
+    NATIVE(EqualEqual_ObjectObject) { r.i = a[0]->o == a[1]->o; };
+    NATIVE(NotEqual_ObjectObject) { r.i = a[0]->o != a[1]->o; };
+    by_name_["isa"] = [this](Obj* self, std::vector<Value*>& a, Value& r) {  // IsA(name ClassName)
+        for (Obj* c = self ? self->cls : nullptr; c && !r.i; c = super_of(c)) r.i = iequal(name_of(c), a[0]->s);
+    };
+    by_name_["classischildof"] = [this](Obj*, std::vector<Value*>& a, Value& r) { r.i = a[0]->o && is_a(a[0]->o, a[1]->o); };
     // Log
-    by_name_["log"] = [this](std::vector<Value*>& a, Value&) {
+    by_name_["log"] = [this](Obj*, std::vector<Value*>& a, Value&) {
         log.push_back((a[1] ? a[1]->s : std::string("ScriptLog")) + ": " + a[0]->s);
     };
-    by_name_["warn"] = [this](std::vector<Value*>& a, Value&) { log.push_back("ScriptWarning: " + a[0]->s); };
+    by_name_["warn"] = [this](Obj*, std::vector<Value*>& a, Value&) { log.push_back("ScriptWarning: " + a[0]->s); };
 }
 
 }  // namespace ut
