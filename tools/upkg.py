@@ -50,10 +50,10 @@ class Reader:
         return s.rstrip(b"\0").decode("latin-1")
 
 
-def lazy_bytes(r, version):
-    """Lazy array of bytes: [u32 file position past the data, version >= 62], compact size, data."""
+def lazy_bytes(r, version, item_size=1):
+    """Lazy array: [u32 file position past the data, version >= 62], compact item count, items (raw bytes)."""
     skip = r.u32() if version >= 62 else None
-    n = r.index()
+    n = r.index() * item_size
     out = r.data[r.pos:r.pos + n]
     r.pos += n
     if skip is not None and skip != r.pos:

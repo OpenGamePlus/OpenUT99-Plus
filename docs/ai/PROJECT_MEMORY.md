@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — meshes; phase A exit check met
+
+- `tools/umesh.py`: Mesh, LodMesh, SkeletalMesh, Animation byte-exact; the sweep now reports all 276,885 retail exports exact, with no class left without a reader.
+- Byte-exact was not enough: the first Soldier render was scrambled. Each LodMesh frame stores the special (weapon) vertices first, so wedge indices are offset by `special_verts`; with that the model renders right.
+
 ## 2026-11-10 — level geometry
 
 - `tools/umodel.py`: Polys, Model (BSP nodes, surfaces, verts, zones, lightmaps, bounds, leaves) and Level (actor list, URL, reach specs) byte-exact on the first hypothesis from public UE1 docs.

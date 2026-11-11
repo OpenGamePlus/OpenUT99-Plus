@@ -1,6 +1,6 @@
 # SYSTEM_SUMMARY
 
-Last updated: 2026-11-10. Phase: A (package loading): container and tagged properties done.
+Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: every export byte-exact. Next: B (C++ engine, level viewer).
 
 ## Tree
 
@@ -17,6 +17,7 @@ tools/
   ufont.py           Font (pages, glyph rectangles, 469 remap)
   uscript.py         Class, State, Function, Struct, Enum, Const, TextBuffer, *Property, bytecode
   umodel.py          Polys, Model (BSP, surfaces, lightmaps, zones), Level
+  umesh.py           Mesh, LodMesh, SkeletalMesh, Animation (OBJ export)
   uobjects.py        dispatcher + sweep over all exports (exact / leftover / error / noreader)
   check_docs.py      documentation checker
   test_*.py          unit tests on synthetic data
@@ -34,7 +35,7 @@ tools/
 | Font | done, byte-exact |
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
-| Meshes (Mesh, LodMesh, SkeletalMesh, Animation) | not started |
+| Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
 | Engine (C++) | not started |
 | Network | not started |
 
@@ -51,6 +52,7 @@ python3 tools/uobjects.py FILE OBJECT            # decode one export
 python3 tools/utex.py FILE TEXTURE --png out/x.png   # P8 preview
 python3 tools/usound.py FILE OBJECT --out out/x.wav  # embedded file
 python3 tools/uscript.py --tokens <UT99_DIR>     # bytecode token histogram
+python3 tools/umesh.py FILE LODMESH --obj out/x.obj [FRAME]
 ```
 
 ## Contracts
@@ -64,3 +66,4 @@ python3 tools/uscript.py --tokens <UT99_DIR>     # bytecode token histogram
 - `ufont.read_font(...) -> {"pages": [{"texture", "chars": [(u, v, w, h)]}], "chars_per_page", "remap"?, "remapped"?}`.
 - `uscript.decode_script(pkg, data, pos, mem_size) -> (end, Counter of tokens)`; readers for `Class` (with `defaults`), `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, every `*Property` (`refs` = type references).
 - `umodel.read_model(...)` → `vectors`, `points`, `nodes`, `surfs`, `verts`, `zones`, `lightmaps`, `light_bits`, `lights`, ... (names as in `docs/formats/level.md`); `umodel.read_level(...)` → `actors`, `url`, `model`, `reach_specs`, ...; `umodel.read_polys(...)` → list of polygons.
+- `umesh.read_mesh / read_lod_mesh / read_skeletal_mesh / read_animation`; `umesh.unpack_vert(u32) -> (x, y, z)`; `umesh.lod_mesh_obj(mesh, frame) -> str`.

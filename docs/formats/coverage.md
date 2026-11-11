@@ -1,5 +1,7 @@
 # Format coverage
 
+Phase A status: `uobjects.py --sweep <UT99_DIR>` reports every one of the 276,885 non-empty exports of the retail install as exact (0 leftover, 0 error, 0 without reader).
+
 | Format | Spec | Reader | State |
 |---|---|---|---|
 | Dispatcher, per-class sweep | — | `tools/uobjects.py` | progress meter |
@@ -10,7 +12,7 @@
 | `Sound` (2,881, all PCM WAV) | [sound.md](sound.md) | `tools/usound.py` | exact |
 | `Music` (33: 30 IT, 2 S3M, 1 XM) | [sound.md](sound.md) | `tools/usound.py` | exact |
 | `Level`, `Model` (BSP, lightmaps, zones), `Polys`; actors are tagged properties | [level.md](level.md) | `tools/umodel.py` | exact; light colour model open |
-| `Mesh` / `LodMesh` (vertex animation), `SkeletalMesh` | — | — | open |
+| `Mesh`, `LodMesh` (vertex animation), `SkeletalMesh`, `Animation` | [mesh.md](mesh.md) | `tools/umesh.py` | exact; LodMesh frame checked visually |
 | `Class`, `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, `*Property`, bytecode | [script.md](script.md) | `tools/uscript.py` | exact on all; token semantics from public docs |
 | `Font` | [font.md](font.md) | `tools/ufont.py` | exact |
 | `.ini` / `.int` configuration and localisation | — | — | open |
