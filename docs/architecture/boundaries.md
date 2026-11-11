@@ -9,6 +9,7 @@
 | `tools/uobjects.py` | dispatcher: properties then class data, per-class sweep | `upkg`, `uprops`, reader modules (`tools/u*.py`, loaded by name) |
 | `tools/utex.py` | Palette, Texture mips, PNG preview | `upkg`, `uobjects` |
 | `tools/usound.py` | Sound, Music: embedded WAV / tracker files | `upkg`, `uobjects` |
+| `tools/ufont.py` | Font pages and glyphs | `upkg`, `uobjects` |
 | `tools/check_docs.py` | documentation checker | std only |
 
 The engine (`engine/`, C++) does not exist yet; its modules get rows here as they are added.

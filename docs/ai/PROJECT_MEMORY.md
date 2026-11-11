@@ -2,6 +2,10 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — fonts
+
+- `tools/ufont.py`: pages of glyph rectangles plus characters-per-page; 469 (version 69) adds a code-point remap table and a flag. All 78 fonts byte-exact.
+
 ## 2026-11-10 — sound and music
 
 - `tools/usound.py`: Sound and Music are a format name plus a complete embedded file; all 2,914 byte-exact. 2,881 PCM WAVs (mostly mono, 11–22 kHz), music is 30 IT, 2 S3M and 1 XM: `.umx` are tracker modules, as suspected.

@@ -12,6 +12,6 @@
 | `Level`, `Model` (BSP), `Polys`, actors (`.unr`) | — | — | open |
 | `Mesh` / `LodMesh` (vertex animation), `SkeletalMesh` | — | — | open |
 | `Class`, `State`, `Function`, bytecode (`.u`) | — | — | open |
-| `Font` | — | — | open |
+| `Font` | [font.md](font.md) | `tools/ufont.py` | exact |
 | `.ini` / `.int` configuration and localisation | — | — | open |
 | Network protocol | — | — | open (roadmap E) |

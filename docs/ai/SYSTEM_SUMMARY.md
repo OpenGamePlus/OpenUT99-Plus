@@ -14,6 +14,7 @@ tools/
   uprops.py          tagged properties (generic object data)
   utex.py            Palette, Texture (mips, PNG preview)
   usound.py          Sound, Music (embedded WAV / IT / S3M / XM)
+  ufont.py           Font (pages, glyph rectangles, 469 remap)
   uobjects.py        dispatcher + sweep over all exports (exact / leftover / error / noreader)
   check_docs.py      documentation checker
   test_*.py          unit tests on synthetic data
@@ -28,7 +29,8 @@ tools/
 | Palette, Texture, ScriptedTexture | done, byte-exact on all retail objects |
 | FireTexture, WetTexture, WaveTexture, IceTexture | done (data); animation not decoded |
 | Sound, Music | done, byte-exact |
-| Other class-specific data (fonts, levels, meshes, classes) | not started |
+| Font | done, byte-exact |
+| Other class-specific data (levels, meshes, classes) | not started |
 | Engine (C++) | not started |
 | Network | not started |
 
@@ -54,3 +56,4 @@ python3 tools/usound.py FILE OBJECT --out out/x.wav  # embedded file
 - `uobjects.register(*class_names)`: decorator for `reader(pkg, data, export, pos, props) -> (value, end)`, called with `pos` after the `None` tag (class objects: the export offset). `uobjects.read_object(pkg, data, export) -> {"props", "value", "end"}`; `uobjects.outcome(...)` → `exact` | `leftover` | `error` | `noreader`.
 - `utex.read_palette(...) -> [(R,G,B,A)]`; `utex.read_texture(...) -> {"mips": [...], "comp_mips"?: [...]}`, mip = `width`, `height`, `ubits`, `vbits`, `data`; `utex.read_mips(pkg, data, pos)`.
 - `upkg.lazy_bytes(reader, version) -> bytes`: bulk data with the version ≥ 62 skip offset (checked). `usound.read_sound(...) -> {"format", "data"}`; `usound.signature(bytes) -> "wav" | "it" | "s3m" | "xm" | "mod" | "unknown"`.
+- `ufont.read_font(...) -> {"pages": [{"texture", "chars": [(u, v, w, h)]}], "chars_per_page", "remap"?, "remapped"?}`.
