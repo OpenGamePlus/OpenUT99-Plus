@@ -16,6 +16,7 @@ tools/
   usound.py          Sound, Music (embedded WAV / IT / S3M / XM)
   ufont.py           Font (pages, glyph rectangles, 469 remap)
   uscript.py         Class, State, Function, Struct, Enum, Const, TextBuffer, *Property, bytecode
+  umodel.py          Polys, Model (BSP, surfaces, lightmaps, zones), Level
   uobjects.py        dispatcher + sweep over all exports (exact / leftover / error / noreader)
   check_docs.py      documentation checker
   test_*.py          unit tests on synthetic data
@@ -32,7 +33,8 @@ tools/
 | Sound, Music | done, byte-exact |
 | Font | done, byte-exact |
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
-| Other class-specific data (levels, meshes) | not started |
+| Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
+| Meshes (Mesh, LodMesh, SkeletalMesh, Animation) | not started |
 | Engine (C++) | not started |
 | Network | not started |
 
@@ -61,3 +63,4 @@ python3 tools/uscript.py --tokens <UT99_DIR>     # bytecode token histogram
 - `upkg.lazy_bytes(reader, version) -> bytes`: bulk data with the version ≥ 62 skip offset (checked). `usound.read_sound(...) -> {"format", "data"}`; `usound.signature(bytes) -> "wav" | "it" | "s3m" | "xm" | "mod" | "unknown"`.
 - `ufont.read_font(...) -> {"pages": [{"texture", "chars": [(u, v, w, h)]}], "chars_per_page", "remap"?, "remapped"?}`.
 - `uscript.decode_script(pkg, data, pos, mem_size) -> (end, Counter of tokens)`; readers for `Class` (with `defaults`), `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, every `*Property` (`refs` = type references).
+- `umodel.read_model(...)` → `vectors`, `points`, `nodes`, `surfs`, `verts`, `zones`, `lightmaps`, `light_bits`, `lights`, ... (names as in `docs/formats/level.md`); `umodel.read_level(...)` → `actors`, `url`, `model`, `reach_specs`, ...; `umodel.read_polys(...)` → list of polygons.

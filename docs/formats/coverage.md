@@ -9,7 +9,7 @@
 | `FireTexture`, `WetTexture`, `WaveTexture`, `IceTexture` | [texture.md](texture.md) | `tools/utex.py` | exact; animation rules open |
 | `Sound` (2,881, all PCM WAV) | [sound.md](sound.md) | `tools/usound.py` | exact |
 | `Music` (33: 30 IT, 2 S3M, 1 XM) | [sound.md](sound.md) | `tools/usound.py` | exact |
-| `Level`, `Model` (BSP), `Polys`, actors (`.unr`) | — | — | open |
+| `Level`, `Model` (BSP, lightmaps, zones), `Polys`; actors are tagged properties | [level.md](level.md) | `tools/umodel.py` | exact; light colour model open |
 | `Mesh` / `LodMesh` (vertex animation), `SkeletalMesh` | — | — | open |
 | `Class`, `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, `*Property`, bytecode | [script.md](script.md) | `tools/uscript.py` | exact on all; token semantics from public docs |
 | `Font` | [font.md](font.md) | `tools/ufont.py` | exact |

@@ -11,6 +11,7 @@
 | `tools/usound.py` | Sound, Music: embedded WAV / tracker files | `upkg`, `uobjects` |
 | `tools/ufont.py` | Font pages and glyphs | `upkg`, `uobjects` |
 | `tools/uscript.py` | script objects, property declarations, bytecode walker | `upkg`, `uprops`, `uobjects` |
+| `tools/umodel.py` | Polys, Model (BSP), Level | `upkg`, `uobjects` |
 | `tools/check_docs.py` | documentation checker | std only |
 
 The engine (`engine/`, C++) does not exist yet; its modules get rows here as they are added.

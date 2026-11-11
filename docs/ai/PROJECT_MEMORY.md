@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — level geometry
+
+- `tools/umodel.py`: Polys, Model (BSP nodes, surfaces, verts, zones, lightmaps, bounds, leaves) and Level (actor list, URL, reach specs) byte-exact on the first hypothesis from public UE1 docs.
+- Cross-checks on 83 maps: all surface/node indices in range; each lightmap is one shadow bitmap per light (1 bit per luxel, rows rounded to bytes) and all 155,353 sizes match. Light colour is computed at run time from light actors: engine behaviour, open.
+
 ## 2026-11-10 — script objects and bytecode
 
 - `tools/uscript.py`: classes, states, functions, structs, enums, consts, text buffers and property declarations, all byte-exact. Class objects have no leading property list; their defaults come last as a tagged list.
