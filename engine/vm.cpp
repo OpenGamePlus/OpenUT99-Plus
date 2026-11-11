@@ -443,14 +443,18 @@ Value Vm::zero(const Package& p, const Local& l) {
     Obj* st = object(p, l.struct_ref);
     std::vector<std::string>& names = struct_names_[st];
     bool fresh = names.empty();
-    // shortcut: struct inheritance and static arrays inside structs (first element only) not handled yet
-    size_t guard = 0;
-    for (int32_t c = struct_children(*st->pkg, st->ref); c > 0; c = decl(object(*st->pkg, c)).next) {
-        if (++guard > st->pkg->exports.size()) throw std::runtime_error("bad struct members");
-        const Local& m = decl(object(*st->pkg, c));
-        if (!is_property(*st->pkg, st->pkg->exports[size_t(c - 1)])) continue;
-        v.fields.push_back(zero(*st->pkg, m));
-        if (fresh) names.push_back(m.name);
+    std::vector<Obj*> chain;  // parent structs first (e.g. Plane extends Vector: X, Y, Z, then W)
+    for (Obj* s = st; s && chain.size() < 64; s = super_of(s)) chain.insert(chain.begin(), s);
+    // shortcut: static arrays inside structs keep their first element only
+    for (Obj* s : chain) {
+        size_t guard = 0;
+        for (int32_t c = struct_children(*s->pkg, s->ref); c > 0; c = decl(object(*s->pkg, c)).next) {
+            if (++guard > s->pkg->exports.size()) throw std::runtime_error("bad struct members");
+            const Local& m = decl(object(*s->pkg, c));
+            if (!is_property(*s->pkg, s->pkg->exports[size_t(c - 1)])) continue;
+            v.fields.push_back(zero(*s->pkg, m));
+            if (fresh) names.push_back(m.name);
+        }
     }
     v.field_names = &names;
     return v;
@@ -504,6 +508,11 @@ Obj* Vm::find_prop(Obj* cls, const std::string& name) {
 Value* Vm::prop(Obj* o, const std::string& name) {
     Obj* p = o && o->cls ? find_prop(o->cls, name) : nullptr;
     return p ? &var(o, *p->pkg, p->ref)[0] : nullptr;
+}
+
+std::vector<Value>* Vm::prop_array(Obj* o, const std::string& name) {
+    Obj* p = o && o->cls ? find_prop(o->cls, name) : nullptr;
+    return p ? &var(o, *p->pkg, p->ref) : nullptr;
 }
 
 void Vm::instantiate(Obj* o) {
@@ -622,12 +631,13 @@ size_t find_label(const Function& code, const std::string& label) {
 
 }  // namespace
 
-bool Vm::event(Obj* o, const std::string& name, std::vector<Value> args) {
+bool Vm::event(Obj* o, const std::string& name, std::vector<Value> args, Value* ret) {
     // shortcut: Disable applies to every event name, not only probe functions; state probe masks not applied
     if (std::find(o->disabled.begin(), o->disabled.end(), lower(name)) != o->disabled.end()) return false;
     const Function* f = find_virtual(o->cls, o->state, name);
     if (!f || (f->flags & kFuncNative)) return false;
-    call(*f, o, args);
+    Value r = call(*f, o, args);
+    if (ret) *ret = r;
     return true;
 }
 
@@ -643,6 +653,7 @@ bool Vm::goto_state(Obj* o, const std::string& name, const std::string& label) {
     int gen = ++o->state_gen;
     o->code_active = false;
     o->sleep = -1;
+    o->wait = nullptr;
     if (st != o->state) {
         if (o->state) event(o, "EndState");
         if (o->state_gen != gen) return true;  // EndState changed state itself
@@ -667,6 +678,10 @@ void Vm::tick(Obj* o, float dt) {
         if (o->sleep > 0) return;
         o->sleep = -1;
     }
+    if (o->wait) {
+        if (!o->wait()) return;
+        o->wait = nullptr;
+    }
     const Function& code = state_code(o->code_state);
     Frame fr(code, o);
     fr.pc = o->state_pc;
@@ -676,7 +691,7 @@ void Vm::tick(Obj* o, float dt) {
         eval(fr, o);
         if (o->state_gen != gen) return;  // GotoState: the new code runs from the next tick
         if (fr.done) break;
-        if (o->sleep >= 0) {  // latent call: continue after it
+        if (o->sleep >= 0 || o->wait) {  // latent call: continue after it
             o->state_pc = fr.pc;
             return;
         }
@@ -860,6 +875,13 @@ std::string Vm::name_of(const Obj* o) const {
     return o->cls->pkg->exports[size_t(o->cls->ref - 1)].name;  // shortcut: instances are not numbered yet
 }
 
+Obj* Vm::class_of(Obj* o) {
+    if (!o) return nullptr;
+    if (o->cls || !o->pkg) return o->cls;
+    int32_t c = o->pkg->exports[size_t(o->ref - 1)].class_ref;
+    return c ? object(*o->pkg, c) : nullptr;  // shortcut: class objects (class 'Class') report no class
+}
+
 bool Vm::is_a(Obj* cls, const Obj* base) {
     for (int guard = 0; cls && guard < 256; cls = super_of(cls), guard++)
         if (cls == base) return true;
@@ -924,7 +946,7 @@ Value Vm::eval(Frame& fr, Obj* ctx) {
         case 0x2E: {  // Class(expr): the object if its class is Class or a subclass, else None
             Obj* base = object(*fr.f.pkg, fr.i32());
             Value x = eval(fr, fr.self);
-            if (x.o && !is_a(x.o->cls, base)) x.o = nullptr;  // shortcut: package objects (no cls) always pass
+            if (x.o && !is_a(class_of(x.o), base)) x.o = nullptr;
             x.t = VT::Object;
             return x;
         }
@@ -1124,6 +1146,11 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
     NATIVE(Divide_VectorFloat) { for (int k = 0; k < 3; k++) r.v[k] = a[1]->f != 0 ? a[0]->v[k] / a[1]->f : 0; };
     NATIVE(Add_VectorVector) { for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[k] + a[1]->v[k]; };
     NATIVE(Subtract_VectorVector) { for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[k] - a[1]->v[k]; };
+    NATIVE(AddEqual_VectorVector) { for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[k] += a[1]->v[k]; };
+    NATIVE(SubtractEqual_VectorVector) { for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[k] -= a[1]->v[k]; };
+    NATIVE(MultiplyEqual_VectorFloat) { for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[k] *= a[1]->f; };
+    NATIVE(MultiplyEqual_VectorVector) { for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[k] *= a[1]->v[k]; };
+    NATIVE(DivideEqual_VectorFloat) { for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[k] = a[1]->f != 0 ? a[0]->v[k] / a[1]->f : 0; };
     NATIVE(EqualEqual_VectorVector) { r.i = equal(*a[0], *a[1]); };
     NATIVE(NotEqual_VectorVector) { r.i = !equal(*a[0], *a[1]); };
     NATIVE(Dot_VectorVector) { r.f = a[0]->v[0] * a[1]->v[0] + a[0]->v[1] * a[1]->v[1] + a[0]->v[2] * a[1]->v[2]; };
@@ -1190,7 +1217,7 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
             if (!iequal(path.substr(0, dot) + "." + full, path)) continue;
             Obj* found = object(*p, int32_t(i + 1));
             Obj* cls = e.class_ref ? object(*p, e.class_ref) : nullptr;  // class objects: class 'Class'
-            if (!a[1]->o || (e.class_ref ? is_a(cls, a[1]->o) : name_of(a[1]->o) == "Class")) r.o = found;
+            if (!a[1]->o || (e.class_ref ? is_a(cls, a[1]->o) : iequal(name_of(a[1]->o), "Class"))) r.o = found;
         }
         if (!r.o && !(a[2] && a[2]->i)) log.push_back("ScriptWarning: DynamicLoadObject failed: " + path);
     };
@@ -1208,6 +1235,13 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
     // String
     NATIVE(Concat_StrStr) { r.s = a[0]->s + a[1]->s; };
     NATIVE(At_StrStr) { r.s = a[0]->s + " " + a[1]->s; };
+    NATIVE(ConcatEqual_StrStr) { r.s = a[0]->s += a[1]->s; };
+    NATIVE(AtEqual_StrStr) { r.s = a[0]->s += " " + a[1]->s; };
+    NATIVE(SubtractEqual_StrStr) {  // removes every occurrence of B from A
+        if (!a[1]->s.empty())
+            for (size_t at; (at = a[0]->s.find(a[1]->s)) != std::string::npos;) a[0]->s.erase(at, a[1]->s.size());
+        r.s = a[0]->s;
+    };
     NATIVE(Less_StrStr) { r.i = a[0]->s < a[1]->s; };
     NATIVE(Greater_StrStr) { r.i = a[0]->s > a[1]->s; };
     NATIVE(LessEqual_StrStr) { r.i = a[0]->s <= a[1]->s; };
@@ -1243,7 +1277,7 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
     NATIVE(EqualEqual_ObjectObject) { r.i = a[0]->o == a[1]->o; };
     NATIVE(NotEqual_ObjectObject) { r.i = a[0]->o != a[1]->o; };
     by_name_["isa"] = [this](Obj* self, std::vector<Value*>& a, Value& r) {  // IsA(name ClassName)
-        for (Obj* c = self ? self->cls : nullptr; c && !r.i; c = super_of(c)) r.i = iequal(name_of(c), a[0]->s);
+        for (Obj* c = class_of(self); c && !r.i; c = super_of(c)) r.i = iequal(name_of(c), a[0]->s);
     };
     by_name_["classischildof"] = [this](Obj*, std::vector<Value*>& a, Value& r) { r.i = a[0]->o && is_a(a[0]->o, a[1]->o); };
     by_name_["gotostate"] = [this](Obj* self, std::vector<Value*>& a, Value&) {

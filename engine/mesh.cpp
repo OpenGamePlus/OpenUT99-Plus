@@ -20,10 +20,19 @@ static size_t count(Reader& r) {
     return size_t(n);
 }
 
-static void skip_seq(Reader& r) {
-    r.index(), r.index(), r.i32(), r.i32();
-    for (size_t n = count(r); n--;) r.f32(), r.index();
-    r.f32();
+static std::string name_at(const Package& p, int32_t i) {
+    if (i < 0 || size_t(i) >= p.names.size()) throw std::runtime_error("bad name index in mesh");
+    return p.names[size_t(i)];
+}
+
+static LodMesh::AnimSeq read_seq(const Package& p, Reader& r) {  // name, group, start, frames, notifys, rate
+    LodMesh::AnimSeq s;
+    s.name = name_at(p, r.index());
+    s.group = name_at(p, r.index());
+    s.start = r.i32(), s.frames = r.i32();
+    for (size_t n = count(r); n--;) r.f32(), r.index();  // notifys: time, function name
+    s.rate = r.f32();
+    return s;
 }
 
 LodMesh read_lod_mesh(const Package& p, const Export& e) {
@@ -35,7 +44,7 @@ LodMesh read_lod_mesh(const Package& p, const Export& e) {
     r.pos += 41;  // primitive
     std::vector<uint8_t> verts = lazy_bytes(r, p.version, 4);
     lazy_bytes(r, p.version, 20);  // tris (empty in LodMesh)
-    for (size_t n = count(r); n--;) skip_seq(r);
+    for (size_t n = count(r); n--;) m.seqs.push_back(read_seq(p, r));
     lazy_bytes(r, p.version, 8);  // connects
     r.need(41);
     r.pos += 41;  // bounds

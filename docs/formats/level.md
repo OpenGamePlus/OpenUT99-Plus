@@ -108,11 +108,13 @@ Names from public UE1 documentation, unverified against behaviour.
 | text blocks | 16 × ref |
 | travel info | compact count × (string, string) |
 
+Reach specs (`Level.reach_specs`) are read by the engine: navigation points' `Paths[16]` index them, giving the bots' path network.
+
 ## Collision (engine)
 
 `engine/collision.*`. Which side of the BSP is solid, found on retail data: walking down from the root, a node's front side is empty; its back side is empty only if the walk was in empty space and the node has flag `0x1` (not CSG). With this rule 1,283 of the 1,285 player starts of the 83 maps are in empty space with solid 50,000 units below; the two others (CTF-Coret, CTF-Orbital) are inside solid for ±60 units, apparently misplaced in the maps. Root side, front-side rule and coplanar nodes make no difference on this test.
 
-Boxes are swept with each node plane pushed out by the box's extent along its normal (the standard expanded-plane method; the original's exact method is **unverified**). A box that starts overlapping solid may move out of it; only entering solid through a plane is a hit. Moving parallel to a plane inside its slab is not entering. Sweep of all maps (`ut_script --maps 5`): of 904 actors falling at the start, 3 are still in the air after 5 s (Assault projectiles in flight); no actor ends inside solid that was not already there in the map data (197 editor cameras, 1 pickup).
+Boxes are swept with each node plane pushed out by the box's extent along its normal (the standard expanded-plane method; the original's exact method is **unverified**). A box that starts overlapping solid may move out of it; only entering solid through a plane is a hit. Moving parallel to a plane inside its slab is not entering. Sweep of all maps (`ut_script --maps 5`): of 904 actors falling at the start, 3 are still in the air after 5 s (Assault projectiles in flight); no actor ends inside solid that was not already there in the map data (197 editor cameras, 1 pickup). Walking bots exposed the method's known flaw: at convex edges a box can be classified into the wrong leaf and sink; the world refuses any move that takes an actor's centre from empty space into solid (exact point test), until bevel planes are added.
 
 ## Open
 

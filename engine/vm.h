@@ -44,6 +44,7 @@ struct Obj {
     size_t state_pc = 0;
     bool code_active = false;
     float sleep = -1;    // latent Sleep: seconds left; < 0 = not sleeping
+    std::function<bool()> wait;  // other latent natives: state code resumes once this returns true
     int state_gen = 0;   // bumped by every GotoState, so running code notices a state change
     std::vector<std::string> disabled;  // probe events turned off with Disable (lower case)
 };
@@ -97,11 +98,13 @@ public:
     bool goto_state(Obj* o, const std::string& state, const std::string& label = "Begin");
     void tick(Obj* o, float dt);  // runs state code until it stops, sleeps or changes state
     // Calls the script function name on o (through its state) if it exists; returns whether it did.
-    bool event(Obj* o, const std::string& name, std::vector<Value> args = {});
+    bool event(Obj* o, const std::string& name, std::vector<Value> args = {}, Value* ret = nullptr);
     Value* prop(Obj* o, const std::string& name);  // first element of a variable by name; nullptr if none
+    std::vector<Value>* prop_array(Obj* o, const std::string& name);  // all elements of a static array
     void instantiate(Obj* o);  // package object (e.g. a map actor) -> live instance: class defaults + its properties
     void add_native(const std::string& name, Native fn);  // by declared name; replaces a built-in one
     bool is_a(Obj* cls, const Obj* base);  // cls is base or a subclass (or a state inside it)
+    Obj* class_of(Obj* o);                 // an instance's class, or the class of a package object's export
     std::string name_of(const Obj* o) const;
     // Iterator natives (ForEach) put the values to visit here; the VM loops over them.
     std::vector<Value> iterator_items;

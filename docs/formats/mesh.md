@@ -65,3 +65,7 @@ Ref bones (array × (name, flags u32, parent i32)), moves (array × (root speed 
 
 - `PrePivot`, environment-mapped meshes (`bMeshEnviroMap`: the Deathmatch trophy draws grey), mesh lighting.
 - Bone weight semantics; vertex animation interpolation between frames (engine behaviour).
+
+## Engine
+
+`engine/mesh.*` reads LodMesh frame 0, faces, wedges, materials and the animation sequences (name, group, start frame, frame count, rate); the world uses the sequences for `PlayAnim` / `LoopAnim` timing and `GetAnimGroup`.

@@ -143,7 +143,14 @@ Level read_level(const Package& p, const Export& e) {
     for (size_t i = count(r); i--;) r.string();  // URL options
     r.i32(), r.i32();                            // port, valid
     lv.model = r.index();
-    return lv;  // reach specs, text blocks, travel info: not needed by the engine yet
+    for (size_t i = count(r); i--;) {
+        ReachSpec s{};
+        s.distance = r.i32(), s.start = r.index(), s.end = r.index();
+        s.collision_radius = r.i32(), s.collision_height = r.i32(), s.reach_flags = r.i32();
+        s.pruned = r.u8();
+        lv.reach_specs.push_back(s);
+    }
+    return lv;  // text blocks, travel info: not needed by the engine yet
 }
 
 static float dot_sub(const Vec3& p, const Vec3& base, const Vec3& axis) {

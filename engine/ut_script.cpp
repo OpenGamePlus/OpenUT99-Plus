@@ -4,6 +4,7 @@
 // ut_script DIR --map MAP [SECONDS]               load a map's actors, begin play, tick (0.05 s); errors and log ranked
 // ut_script DIR --maps [SECONDS]                  the same for every map of Maps/, errors summed over all of them
 // Arguments are given per parameter (int, float, bool True/False, string, name); out parameters are printed after.
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -61,6 +62,28 @@ std::string run_states(ut::Vm& vm, ut::Obj* cls, int ticks, bool* has_auto) {
     }
 }
 
+// Ticks the world for `seconds`, summing how far each pawn travels (sampled once a second).
+void play(ut::Vm& vm, ut::World& w, float seconds, int* pawns, float* travelled) {
+    std::map<ut::Obj*, ut::Vec3> last;
+    for (int t = 0; float(t) * 0.05f < seconds; t++) {
+        w.tick(0.05f);
+        if (t % 20 != 19) continue;
+        const ut::Value* p = vm.prop(w.level_info, "PawnList");
+        for (int n = 0; p && p->o && n < 256; p = vm.prop(p->o, "nextPawn"), n++) {
+            const ut::Value* l = vm.prop(p->o, "Location");
+            ut::Vec3 at{l->v[0], l->v[1], l->v[2]};
+            auto it = last.find(p->o);
+            if (it != last.end()) {
+                float dx = at.x - it->second.x, dy = at.y - it->second.y, dz = at.z - it->second.z;
+                float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+                if (d < 2000) *travelled += d;  // larger jumps are respawns, not walking
+            }
+            last[p->o] = at;
+        }
+    }
+    *pawns += int(last.size());
+}
+
 void ranked(const std::map<std::string, int>& counts, int limit) {
     std::multimap<int, std::string> top;
     for (const auto& [e, n] : counts) top.emplace(-n, e);
@@ -74,8 +97,9 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float sec
     w.load(name, game);
     size_t loaded = w.actors.size();
     w.begin_play();
-    int ticks = 0;
-    for (; float(ticks) * 0.05f < seconds; ticks++) w.tick(0.05f);
+    int ticks = int(seconds / 0.05f), pawns = 0;
+    float travelled = 0;
+    play(vm, w, seconds, &pawns, &travelled);
     std::map<std::string, int> lines;
     for (const std::string& l : vm.log) lines[l]++;
     int errors = 0;
@@ -83,6 +107,14 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float sec
     std::printf("%s: %zu actors loaded, game %s, %zu actors after %d ticks; %d script errors, %zu log lines\n",
                 name.c_str(), loaded, vm.name_of(w.game ? w.game->cls : nullptr).c_str(), w.actors.size(), ticks, errors,
                 vm.log.size());
+    std::printf("pawns: %d, %.0f units travelled\n", pawns, travelled);
+    const ut::Value* pawn = vm.prop(w.level_info, "PawnList");
+    for (int n = 0; pawn && pawn->o && n < 64; pawn = vm.prop(pawn->o, "nextPawn"), n++) {
+        ut::Obj* o = pawn->o;
+        const ut::Value* loc = vm.prop(o, "Location");
+        std::printf("  %-14s state %-14s physics %d at %.0f %.0f %.0f\n", vm.name_of(o->cls).c_str(),
+                    vm.name_of(o->state).c_str(), vm.prop(o, "Physics")->i, loc->v[0], loc->v[1], loc->v[2]);
+    }
     std::printf("errors:\n");
     ranked(w.errors, 20);
     std::printf("log:\n");
@@ -92,7 +124,8 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float sec
 
 int maps(ut::PackageSet& packages, const std::string& root, float seconds, const std::string& game) {
     std::map<std::string, int> errors;
-    int count = 0, failed = 0, falling = 0, in_solid = 0;
+    int count = 0, failed = 0, falling = 0, in_solid = 0, pawns = 0;
+    float travelled = 0;
     std::map<std::string, int> solid_classes;
     size_t actors = 0;
     for (const auto& d : std::filesystem::directory_iterator(root + "/Maps")) {
@@ -105,7 +138,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
         try {
             w.load(d.path().stem().string(), game);
             w.begin_play();
-            for (int t = 0; float(t) * 0.05f < seconds; t++) w.tick(0.05f);
+            play(vm, w, seconds, &pawns, &travelled);
         } catch (const std::exception& e) {
             failed++;
             errors["map failed: " + std::string(e.what())]++;
@@ -125,6 +158,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
     }
     std::printf("%d maps, %d failed, %zu actors alive at the end: %d still falling, %d colliding actors inside solid\n",
                 count, failed, actors, falling, in_solid);
+    std::printf("%d pawns, %.0f units travelled (%.0f per pawn)\n", pawns, travelled, pawns ? travelled / float(pawns) : 0.f);
     if (in_solid) {
         std::printf("inside solid, by class:\n");
         ranked(solid_classes, 8);

@@ -47,9 +47,16 @@ struct Model {
     int32_t polys = 0;
 };
 
+struct ReachSpec {  // a path between two navigation points (built by the editor)
+    int32_t distance, start, end;  // start, end: object refs
+    int32_t collision_radius, collision_height, reach_flags;
+    uint8_t pruned;
+};
+
 struct Level {
     std::vector<int32_t> actors;  // object refs, 0 = deleted slot
     int32_t model = 0;
+    std::vector<ReachSpec> reach_specs;
 };
 
 // Poly flag bits (public UE1 names, unverified).

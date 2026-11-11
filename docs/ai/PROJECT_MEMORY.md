@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — bots in the match
+
+- Bots now join and roam: reach specs read, path network and Dijkstra routes (`FindPathToward`, `FindBestInventoryPath` with the items' own `BotDesireability`), latent `MoveTo` / `MoveToward` / `WaitForLanding` / `FinishAnim`, walking with step-up, touching (pickups), mesh animation sequences, actor regions. `--maps 20`: 289 bots over 83 maps, no script error.
+- What the retail scripts demanded: editor `Camera` actors must go (they block the match start as never-ready players); the game must be `Level.Game` before its `PreBeginPlay` (else its GameReplicationInfo destroys itself); `Texture(...)` casts need the class of package objects; struct inheritance (`Plane extends Vector`).
+- Next: combat (aiming, weapons firing, damage), blocking between actors, better reachability so bots stop getting stuck.
+
 ## 2026-11-11 — BSP collision and physics
 
 - `engine/collision.*`: point solidity and swept boxes on the level BSP; `World` runs falling, projectile, flying, rotating and a minimal walking, and `Trace`, `FastTrace`, `Move`, `SetLocation` use it. Sweep: of 904 actors falling at map start, 3 are still airborne after 5 s (Assault projectiles in flight).

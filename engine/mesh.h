@@ -1,6 +1,7 @@
 // LodMesh (vertex-animated meshes). Spec: docs/formats/mesh.md; reference: tools/umesh.py
 #pragma once
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "upkg.h"
@@ -21,6 +22,12 @@ struct LodMesh {
     std::vector<int32_t> textures;  // object refs
     Vec3 scale{}, origin{};
     int32_t rot_origin[3] = {0, 0, 0};  // pitch, yaw, roll
+    struct AnimSeq {
+        std::string name, group;
+        int32_t start = 0, frames = 0;
+        float rate = 0;  // frames per second
+    };
+    std::vector<AnimSeq> seqs;
 };
 
 LodMesh read_lod_mesh(const Package& p, const Export& e);  // throws if the export is not a LodMesh layout

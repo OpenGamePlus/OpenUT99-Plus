@@ -402,15 +402,21 @@ static void test_read_class() {
 // 27 Call(): return Get(), a virtual call that sees the state.
 // 29 iterator native Three(out int V) (300); 31 Sum(): S = 1; ForEach Three(V) S = S * V; return S.
 // 35-37 TimerRate, TimerCounter, bTimerLoop of T; 38 Timer(): X = X * 2.
+// 39-47 Location, Velocity, Acceleration, Physics, bCollideActors, bCollideWorld, CollisionRadius, CollisionHeight,
+// GroundSpeed of T; 48 Touch(Other): X = X * 2.
 static Package vm_package() {
     Package p;
     p.version = 69;
     p.names = {"None", "T", "Mul", "A", "B", "C", "ReturnValue", "Multiply_IntInt", "Function", "IntProperty",
                "Core", "Class", "OrOr_BoolBool", "BoolProperty", "Or", "X", "Get", "Null",
                "Sleep", "Seconds", "FloatProperty", "S", "Begin", "State", "Call",
-               "Three", "Sum", "V", "TimerRate", "TimerCounter", "bTimerLoop", "Timer"};
+               "Three", "Sum", "V", "TimerRate", "TimerCounter", "bTimerLoop", "Timer",
+               "Location", "Velocity", "Acceleration", "Physics", "bCollideActors", "bCollideWorld", "CollisionRadius",
+               "CollisionHeight", "GroundSpeed", "Touch", "Other", "Vector", "Struct", "ByteProperty", "StructProperty",
+               "ObjectProperty"};
     p.imports = {{"Core", "Class", 0, "Function"}, {"Core", "Class", 0, "IntProperty"}, {"Core", "Class", 0, "BoolProperty"},
-                 {"Core", "Class", 0, "FloatProperty"}, {"Core", "Class", 0, "State"}};
+                 {"Core", "Class", 0, "FloatProperty"}, {"Core", "Class", 0, "State"}, {"Core", "Class", 0, "ByteProperty"},
+                 {"Core", "Class", 0, "StructProperty"}, {"Core", "Class", 0, "ObjectProperty"}, {"Core", "Struct", 0, "Vector"}};
     auto add = [&](int32_t cls, int32_t outer, const char* name, const Bytes& d) {
         p.exports.push_back({cls, 0, outer, name, 0, int32_t(d.size()), int32_t(p.data.size())});
         put(p.data, d);
@@ -508,6 +514,19 @@ static Package vm_package() {
     put(timer, cindex(17)); timer.push_back(0x90); timer.push_back(0x01); put(timer, cindex(17));
     timer.push_back(0x2C); timer.push_back(2); timer.push_back(0x16);
     add(-1, 1, "Timer", func(0, timer, 15, 0, 0));
+    for (const char* v : {"Location", "Velocity", "Acceleration"}) {
+        Bytes b = prop(0, 0);
+        put(b, cindex(-9));  // StructProperty of struct Vector
+        add(-7, 1, v, b);
+    }
+    add(-6, 1, "Physics", prop(0, 0));
+    add(-3, 1, "bCollideActors", prop(0, 0));
+    add(-3, 1, "bCollideWorld", prop(0, 0));
+    add(-4, 1, "CollisionRadius", prop(0, 0));
+    add(-4, 1, "CollisionHeight", prop(0, 0));
+    add(-4, 1, "GroundSpeed", prop(0, 0));
+    add(-1, 1, "Touch", func(49, timer, 15, 0, 0));
+    add(-8, 48, "Other", prop(0, kParm));
     return p;
 }
 
@@ -564,6 +583,29 @@ static void test_vm() {
     vm.prop(a, "bTimerLoop")->i = 0;
     for (int k = 0; k < 6; k++) w.tick(0.1f);
     assert(ax.i == 40 && vm.prop(a, "TimerRate")->f == 0);  // one-shot: fired once, then off
+    assert(w.errors.empty());
+    // A walks along the floor of the two-node BSP (floor z = 0, wall x = 100), touches B, stops at the wall.
+    Model room;
+    Node floor{}, wall{};
+    floor.plane[2] = 1, floor.back = -1, floor.front = 1;
+    wall.plane[0] = -1, wall.plane[3] = -100, wall.back = -1, wall.front = -1;
+    room.nodes = {floor, wall};
+    w.set_model(room);
+    Obj* walker = w.spawn(t, nullptr, nullptr, nullptr, nullptr, nullptr);
+    Obj* other = w.spawn(t, nullptr, nullptr, nullptr, nullptr, nullptr);
+    for (Obj* o : {walker, other}) {
+        vm.prop(o, "bCollideActors")->i = 1;
+        vm.prop(o, "CollisionRadius")->f = 20, vm.prop(o, "CollisionHeight")->f = 20;
+        vm.prop(o, "Location")->v[2] = 20;
+    }
+    vm.prop(other, "Location")->v[0] = 60;
+    vm.prop(walker, "Physics")->i = 1, vm.prop(walker, "bCollideWorld")->i = 1;
+    vm.prop(walker, "Acceleration")->v[0] = 1, vm.prop(walker, "GroundSpeed")->f = 400;
+    for (int k = 0; k < 20; k++) w.tick(0.05f);
+    assert(vm.prop(walker, "Location")->t == VT::Vector && vm.prop(walker, "Physics")->t == VT::Byte);
+    const float* at = vm.prop(walker, "Location")->v;
+    assert(walker->vars[vm.object(p, 17)][0].i == 10 && other->vars[vm.object(p, 17)][0].i == 10);  // both touched once
+    assert(at[0] > 79 && at[0] < 80.5f && std::fabs(at[2] - 20) < 0.5f && vm.prop(walker, "Physics")->i == 1);
     assert(w.errors.empty());
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
