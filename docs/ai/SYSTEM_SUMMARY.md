@@ -25,7 +25,8 @@ tools/
 | Package container | done, verified on all 396 retail packages |
 | Tagged properties | done, verified on all 273,585 non-class exports |
 | Palette, Texture, ScriptedTexture | done, byte-exact on all retail objects |
-| Other class-specific data (procedural textures, sounds, levels, meshes, classes) | not started |
+| FireTexture, WetTexture, WaveTexture, IceTexture | done (data); animation not decoded |
+| Other class-specific data (sounds, levels, meshes, classes) | not started |
 | Engine (C++) | not started |
 | Network | not started |
 

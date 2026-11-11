@@ -1,8 +1,8 @@
 # Palette and Texture
 
-Reader: `tools/utex.py` (registered for `Palette`, `Texture`, `ScriptedTexture`). Class data follows the tagged properties ([properties.md](properties.md)).
+Reader: `tools/utex.py` (registered for `Palette`, `Texture`, `ScriptedTexture`, `FireTexture`, `WetTexture`, `WaveTexture`, `IceTexture`). Class data follows the tagged properties ([properties.md](properties.md)).
 
-Verified (`uobjects.py --sweep <UT99_DIR>`): every `Palette` (6,621), `Texture` (9,792) and `ScriptedTexture` (14) in the retail install is consumed byte-exactly. PNG previews of P8 textures (versions 61 and 69, world texture and player skin) look right.
+Verified (`uobjects.py --sweep <UT99_DIR>`): every `Palette` (6,621), `Texture` (9,792) and `ScriptedTexture` (14), `FireTexture` (191), `WetTexture` (99), `IceTexture` (17) and `WaveTexture` (7) in the retail install is consumed byte-exactly. PNG previews of P8 textures (versions 61 and 69, world texture and player skin) look right.
 
 ## Palette
 
@@ -30,6 +30,21 @@ Mip array: compact-index count, then per mip:
 | USize, VSize | u32 ×2 | width, height |
 | UBits, VBits | u8 ×2 | log2 of width, height |
 
+## Procedural textures
+
+`WetTexture`, `WaveTexture`, `IceTexture`: the Texture data only; their parameters (source texture, wave settings) are tagged properties.
+
+`FireTexture`: Texture data, then a spark list: compact-index count (equals property `NumSparks`), then 8 bytes per spark:
+
+| Byte | Field (names from public UE1 docs, unverified) |
+|---|---|
+| 0 | type (spark kind) |
+| 1 | heat |
+| 2, 3 | X, Y in texture pixels |
+| 4–7 | per-type arguments (ByteA–ByteD) |
+
+The animation itself (how sparks and heat evolve per frame) is native-only behaviour, not in the data.
+
 ## Pixel formats seen
 
 | Property | Value | Bytes per pixel | Count (mip 0) | Meaning |
@@ -43,4 +58,4 @@ Mip array: compact-index count, then per mip:
 ## Open
 
 - Identify `CompFormat` 7 and 12; decode DXT1 (Python previews are P8 only).
-- Procedural subclasses (`FireTexture`, `WetTexture`, `WaveTexture`, `IceTexture`): base mips + own data, see coverage.
+- Procedural animation rules (fire, water, wave, ice), needed for rendering them animated.

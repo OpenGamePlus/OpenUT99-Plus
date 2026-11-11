@@ -36,13 +36,23 @@ def read_mips(pkg, data, pos):
     return mips, r.pos
 
 
-@register("Texture", "ScriptedTexture")
+@register("Texture", "ScriptedTexture", "WetTexture", "WaveTexture", "IceTexture")
 def read_texture(pkg, data, export, pos, props):
     mips, end = read_mips(pkg, data, pos)
     tex = {"mips": mips}
     if any(p["name"] == "bHasComp" and p["value"] for p in props):  # 469: compressed copy follows
         tex["comp_mips"], end = read_mips(pkg, data, end)
     return tex, end
+
+
+@register("FireTexture")
+def read_fire_texture(pkg, data, export, pos, props):
+    tex, end = read_texture(pkg, data, export, pos, props)
+    r = Reader(data, end)
+    n = r.index()
+    tex["sparks"] = [{"type": data[p], "heat": data[p + 1], "x": data[p + 2], "y": data[p + 3],
+                      "args": tuple(data[p + 4:p + 8])} for p in range(r.pos, r.pos + 8 * n, 8)]
+    return tex, r.pos + 8 * n
 
 
 def rgba(pixels, palette):

@@ -2,7 +2,7 @@ import struct
 import unittest
 
 from test_upkg import cindex
-from utex import read_palette, read_texture, rgba
+from utex import read_fire_texture, read_palette, read_texture, rgba
 
 
 def mip(width, height, version, base, fill=1):
@@ -54,6 +54,14 @@ class UtexTest(unittest.TestCase):
         data[1] ^= 0xFF  # corrupt first mip's skip offset
         with self.assertRaises(ValueError):
             read_texture({"version": 69}, bytes(data), {}, 0, [])
+
+    def test_fire_texture_sparks_follow_mips(self):
+        base = texture_data(69)
+        sparks = cindex(2) + bytes([5, 255, 10, 20, 1, 2, 3, 4]) + bytes([2, 52, 24, 127, 0, 0, 0, 10])
+        tex, end = read_fire_texture({"version": 69}, base + sparks, {}, 0, [])
+        self.assertEqual(end, len(base + sparks))
+        self.assertEqual(tex["sparks"][0], {"type": 5, "heat": 255, "x": 10, "y": 20, "args": (1, 2, 3, 4)})
+        self.assertEqual(len(tex["sparks"]), 2)
 
     def test_rgba_from_palette(self):
         palette = [(i, i, i, 255) for i in range(256)]
