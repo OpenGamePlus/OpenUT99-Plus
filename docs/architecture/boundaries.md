@@ -23,11 +23,13 @@
 | `engine/texture.*` | Palette + P8 Texture → RGBA | `upkg` |
 | `engine/level.*` | Model (BSP), Level, surface triangles | `upkg` |
 | `engine/png.*` | PNG encoder | std only |
+| `engine/script.*` | bytecode walker, class objects (defaults) | `upkg` |
+| `engine/mesh.*` | LodMesh | `upkg` |
 | `engine/lighting.*` | luxel positions, shadow bits, light colours, atlas packer | `level` |
-| `engine/scene.*` | map → texture batches, baked lightmap atlas, sky position, player starts (no GL) | `packages`, `level`, `texture`, `lighting` |
+| `engine/scene.*` | map → texture batches, baked lightmap atlas, sky position, mesh actors (property lookup through class defaults), player starts (no GL) | `packages`, `level`, `texture`, `lighting`, `script`, `mesh` |
 | `engine/render.*` (library `ut_render`) | OpenGL 3.3 renderer, screenshots | `scene`, `png`, epoxy |
 | `engine/mapview.cpp` | executable `ut_mapview`: window, input, `--shot`, `--check` | `render`, `scene`, `vfs`, SDL2 |
-| `engine/ut_dump.cpp` | executable: package summary, property counts, model counts, dependency check | `upkg`, `level`, `config`, `vfs` |
+| `engine/ut_dump.cpp` | executable: package summary, property counts, model, class-default and mesh counts, dependency check | `upkg`, `level`, `script`, `mesh`, `config`, `vfs` |
 | `tools/compare_engine.py` | runs `ut_dump` against the Python readers on an install | `upkg`, `uprops` (Python) |
 
 ## Rules

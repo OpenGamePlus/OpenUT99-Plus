@@ -1,6 +1,7 @@
 // ut_dump FILE            summary line, same text as tools/upkg.py
 // ut_dump FILE --props    per non-class export: "<index> <property count> <end offset>", compared by tools/compare_engine.py
 // ut_dump FILE --model    per Model export: "<index> nodes surfs verts points vectors lightmaps light_bits lights end"
+// ut_dump FILE --classes  per class export: "<index> <default property count>"; per LodMesh: "<index> m <frame verts> <faces> <wedges>"
 // ut_dump --deps DIR       resolve every top-level package import through the Vfs (same report as tools/uini.py --deps)
 #include <cstdio>
 #include <cstring>
@@ -10,6 +11,8 @@
 
 #include "config.h"
 #include "level.h"
+#include "mesh.h"
+#include "script.h"
 #include "upkg.h"
 #include "vfs.h"
 
@@ -35,7 +38,7 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    if (argc < 2 || (argc == 3 && std::strcmp(argv[2], "--props") != 0 && std::strcmp(argv[2], "--model") != 0) || argc > 3) {
+    if (argc < 2 || (argc == 3 && std::strcmp(argv[2], "--props") != 0 && std::strcmp(argv[2], "--model") != 0 && std::strcmp(argv[2], "--classes") != 0) || argc > 3) {
         std::fprintf(stderr, "usage: ut_dump FILE [--props|--model] | ut_dump --deps DIR\n");
         return 2;
     }
@@ -44,6 +47,18 @@ int main(int argc, char** argv) {
         if (argc == 2) {
             std::printf("version %d licensee %d flags %#x names %zu imports %zu exports %zu\n", p.version, p.licensee,
                         p.flags, p.names.size(), p.imports.size(), p.exports.size());
+            return 0;
+        }
+        if (!std::strcmp(argv[2], "--classes")) {
+            for (size_t i = 0; i < p.exports.size(); i++) {
+                const ut::Export& e = p.exports[i];
+                if (e.size == 0) continue;
+                if (e.class_ref == 0) std::printf("%zu %zu\n", i, ut::read_class(p, e).defaults.size());
+                else if (ut::object_name(p, e.class_ref) == "LodMesh") {
+                    ut::LodMesh m = ut::read_lod_mesh(p, e);
+                    std::printf("%zu m %zu %zu %zu\n", i, m.frame0.size(), m.faces.size(), m.wedges.size());
+                }
+            }
             return 0;
         }
         if (!std::strcmp(argv[2], "--model")) {

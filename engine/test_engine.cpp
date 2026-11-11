@@ -1,5 +1,6 @@
 // Engine unit tests on synthetic data (no game files). Same inputs as tools/test_*.py. Run via ctest.
 #include <cassert>
+#include <type_traits>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -11,6 +12,8 @@
 
 #include "config.h"
 #include "level.h"
+#include "mesh.h"
+#include "script.h"
 #include "lighting.h"
 #include "packages.h"
 #include "png.h"
@@ -47,6 +50,7 @@ static Bytes cindex(int32_t v) {  // inverse of Reader::index
 static void put(Bytes& b, const Bytes& more) { b.insert(b.end(), more.begin(), more.end()); }
 template <class T>
 static void put(Bytes& b, T v) {
+    static_assert(std::is_arithmetic<T>::value, "put: numbers only");
     uint8_t raw[sizeof(T)];
     std::memcpy(raw, &v, sizeof(T));
     b.insert(b.end(), raw, raw + sizeof(T));
@@ -247,6 +251,15 @@ static void test_resolve_import() {
     Object o = set.resolve(map, -3);
     assert(o.package && o.exp && o.exp->name == "Tex" && o.exp->package == 3);  // the one inside Walls
     assert(!set.resolve(map, -1).exp);  // a package import is not an object export
+    // A class import (class "Class") matches the class object export (class_ref 0).
+    Package code;
+    code.names = {"None"};
+    code.exports = {{0, 0, 0, "HealthVial", 0, 0, 0}};
+    set.add("BotPack", std::move(code));
+    map.imports.push_back({"Core", "Package", 0, "BotPack"});
+    map.imports.push_back({"Core", "Class", -4, "HealthVial"});
+    Object cls = set.resolve(map, -5);
+    assert(cls.exp && cls.exp->name == "HealthVial" && cls.exp->class_ref == 0);
 }
 
 static void test_png() {
@@ -301,7 +314,55 @@ static void test_atlas() {
     assert(!a.place(17, 1, &x1, &y1));
 }
 
+// Same script as tools/test_uscript.py: Health = 5; Tick(1); native 112(); return; label table.
+static Bytes script_bytes() {
+    Bytes b = {0x0F, 0x01};
+    put(b, cindex(-3)); b.push_back(0x1D); put(b, int32_t(5));
+    b.push_back(0x1B); put(b, cindex(1)); b.push_back(0x26); b.push_back(0x16);
+    b.push_back(0x70); b.push_back(0x16);
+    b.push_back(0x04); b.push_back(0x0B);
+    b.push_back(0x0C); put(b, cindex(3)); put(b, uint32_t(0)); put(b, cindex(0)); put(b, uint32_t(0xFFFF));
+    return b;
+}
+
+static void test_skip_script() {
+    Package p;
+    p.names = {"None", "Tick", "Health", "Label1"};
+    p.data = script_bytes();
+    assert(skip_script(p, 0, 11 + 7 + 2 + 2 + 17) == p.data.size());
+    assert(throws([&] { skip_script(p, 0, 3); }));  // size does not land on a token boundary
+    p.data = {0x03};
+    assert(throws([&] { skip_script(p, 0, 1); }));  // unknown token
+}
+
+// Class object: struct header + script, state fields, class fields, defaults (Health=100).
+static void test_read_class() {
+    Package p;
+    p.version = 69;
+    p.names = {"None", "Tick", "Health", "Label1"};
+    Bytes d;
+    put(d, cindex(-1)); put(d, cindex(0)); put(d, cindex(0)); put(d, cindex(0)); put(d, cindex(1));  // super .. friendly name
+    put(d, int32_t(0)); put(d, int32_t(0)); put(d, uint32_t(11 + 7 + 2 + 2 + 17)); put(d, script_bytes());
+    put(d, uint64_t(0)); put(d, uint64_t(0)); put(d, uint16_t(0xFFFF)); put(d, uint32_t(0));     // state
+    put(d, uint32_t(0)); d.insert(d.end(), 16, 0);                                                 // flags, guid
+    put(d, cindex(0)); put(d, cindex(0)); put(d, cindex(0)); put(d, cindex(0));                    // deps, imports, within, config
+    put(d, cindex(2)); d.push_back(0x22); put(d, int32_t(100)); put(d, cindex(0));                 // defaults
+    p.data = d;
+    Export e{0, 0, 0, "MyClass", 0, int32_t(d.size()), 0};
+    ClassInfo c = read_class(p, e);
+    assert(c.super_ref == -1 && c.defaults.size() == 1 && prop_int(p, c.defaults[0]) == 100);
+}
+
+static void test_unpack_vert() {
+    uint32_t v = uint32_t(-1024 & 0x7FF) | uint32_t(1023 & 0x7FF) << 11 | uint32_t(-512 & 0x3FF) << 22;
+    Vec3 p = unpack_vert(v);
+    assert(p.x == -1024 && p.y == 1023 && p.z == -512);
+}
+
 int main() {
+    test_skip_script();
+    test_read_class();
+    test_unpack_vert();
     test_luxels();
     test_light_colour();
     test_atlas();

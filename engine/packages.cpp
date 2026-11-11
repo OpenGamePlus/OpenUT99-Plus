@@ -52,7 +52,9 @@ Object PackageSet::resolve(const Package& from, int32_t ref) {
     std::string name = lower(im.name), cls = lower(im.class_name);
     const Export* fallback = nullptr;
     for (const Export& e : p->exports) {
-        if (lower(e.name) != name || e.class_ref == 0 || lower(object_name(*p, e.class_ref)) != cls) continue;
+        if (lower(e.name) != name) continue;
+        std::string ecls = e.class_ref == 0 ? "class" : lower(object_name(*p, e.class_ref));  // class objects: class_ref 0
+        if (ecls != cls) continue;
         if (export_groups(*p, e) == groups) return {p, &e};
         if (!fallback) fallback = &e;
     }

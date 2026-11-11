@@ -8,7 +8,9 @@ import os
 import subprocess
 import sys
 
-import umodel
+import umesh  # noqa: F401  (registers readers)
+import umodel  # noqa: F401
+import uscript  # noqa: F401
 from uobjects import read_object
 from upkg import object_name, parse
 from uprops import EXTENSIONS, read_properties
@@ -39,6 +41,20 @@ def model_lines(data):
     return out
 
 
+def class_lines(data):
+    pkg = parse(data)
+    out = []
+    for i, e in enumerate(pkg["exports"]):
+        if not e["size"]:
+            continue
+        if e["class"] == 0:
+            out.append(f'{i} {len(read_object(pkg, data, e)["value"]["defaults"])}')
+        elif object_name(pkg, e["class"]) == "LodMesh":
+            m = read_object(pkg, data, e)["value"]
+            out.append(f'{i} m {m["frame_verts"]} {len(m["faces"])} {len(m["wedges"])}')
+    return out
+
+
 def main(root, exe):
     files = differ = 0
     for ext in EXTENSIONS:
@@ -54,6 +70,9 @@ def main(root, exe):
                 cpp_models = subprocess.run([exe, path, "--model"], capture_output=True, text=True).stdout.split("\n")[:-1]
                 props += models
                 cpp_props += cpp_models
+            with open(path, "rb") as f:
+                props += class_lines(f.read())
+            cpp_props += subprocess.run([exe, path, "--classes"], capture_output=True, text=True).stdout.split("\n")[:-1]
             if cpp_summary != summary or cpp_props != props:
                 differ += 1
                 print(f"DIFF {os.path.basename(path)}")

@@ -30,6 +30,7 @@ struct Scene {
     Vec3 sky_pos{};          // SkyZoneInfo location: FakeBackdrop surfaces show the level seen from here
     std::vector<Spawn> starts;
     size_t surfaces = 0, skipped = 0, missing_textures = 0;
+    size_t mesh_actors = 0;  // actors drawn with a LodMesh (frame 0)
 };
 
 // Throws std::runtime_error if the map or its Level / Model cannot be read.

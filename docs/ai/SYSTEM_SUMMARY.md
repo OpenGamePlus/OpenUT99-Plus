@@ -16,8 +16,10 @@ engine/
   packages.{h,cpp}   loaded packages, cross-package references
   texture.{h,cpp}    Palette + P8 Texture -> RGBA
   level.{h,cpp}      Model (BSP), Level, surface triangles
+  script.{h,cpp}     bytecode walker, class defaults
+  mesh.{h,cpp}       LodMesh
   lighting.{h,cpp}   lightmap luxels, shadow bits, light colours, atlas
-  scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, player starts
+  scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, mesh actors, player starts
   render.{h,cpp}     OpenGL 3.3 renderer (library ut_render)
   png.{h,cpp}        PNG encoder for screenshots
   mapview.cpp        ut_mapview: free-fly viewer, --shot, --check
@@ -53,7 +55,7 @@ tools/
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
-| Engine (C++) | package + property + Model reader (0 differences vs Python on all 396 packages); ini + package lookup (0 missing dependencies); level viewer: textured BSP with baked lightmaps (colour model uncalibrated) and sky zones, all 83 maps load |
+| Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers match Python on all 396 packages; level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load |
 | Network | not started |
 
 ## Commands
@@ -92,3 +94,4 @@ python3 tools/umesh.py FILE LODMESH --obj out/x.obj [FRAME]
 - C++ `ut::load_package(path) -> Package` (`names`, `imports`, `exports`, `data`), `ut::read_properties(pkg, export, &end) -> vector<Property>` (raw `value_pos`/`size`; decode with `prop_int`, `prop_float`, `prop_ref`, `prop_byte`, `prop_string`, `prop_vector`). Throws `std::runtime_error` on bad data; exports outside the file are rejected at load.
 - `uini.parse(text) -> {section: {key: [values]}}`, `uini.package_paths(root, ini) -> {lower name: path}`; C++ `ut::parse_ini`, `ut::read_ini`, `ut::Vfs(root, ini).find(name)`.
 - C++ `ut::PackageSet(&vfs).resolve(pkg, ref) -> Object{package, exp}` (imports by name + class + group path); `ut::load_scene(set, map) -> Scene{batches, starts}`; `ut::Renderer(scene).draw(cam, w, h)`.
+- C++ `ut::skip_script(pkg, pos, mem_size)`, `ut::read_class(pkg, export) -> ClassInfo{super_ref, defaults}`, `ut::read_lod_mesh(pkg, export) -> LodMesh` (frame 0, faces, wedges, materials, textures, scale, origin, rot_origin).

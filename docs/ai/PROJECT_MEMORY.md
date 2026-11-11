@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — mesh actors
+
+- The viewer draws actors with LodMeshes: properties come from the actor, then its class defaults up the super chain (C++ class reader with the bytecode walker; class defaults and meshes match Python on all packages). Pickups, decorations and the EOL_Statues trophies stand upright and textured.
+- Fixed on the way: class imports must match class objects (export class 0). Mesh space needs RotOrigin inverted; with it, raw Y-up player meshes and roll-rotated trophies come out upright.
+
 ## 2026-11-10 — lightmaps and sky
 
 - Lightmap layout pinned with statistics: luxels sample the polygon in texture space from `pan` (U min − 0.1) by U/V scale; shadow bits LSB first; set bits lie within 25 × (LightRadius + 1) of their light. Baked into one atlas per map; CTF-Face shows its star-field sky through FakeBackdrop surfaces drawn depth-only after a pass from the SkyZoneInfo.

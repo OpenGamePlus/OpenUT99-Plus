@@ -16,6 +16,8 @@
 
 ## Known gaps
 
+- Engine draws mesh actors full bright, frame 0, no `PrePivot` or environment mapping; DXT / 469 compressed textures show a grey checker.
+
 - Light colour model uncalibrated (falloff curve, no N·L, ×2 texture modulation); zero-brightness radius-255 lights leave areas black (DM-Deck16][ spawn). Needs same-spot screenshots of the original.
 
 - Package and object flag bits not named ([package.md](../formats/package.md)).

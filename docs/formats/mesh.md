@@ -47,7 +47,11 @@ Mesh, then:
 
 In LodMesh, `tris` is empty: geometry is faces → wedges → vertices. Each frame holds `special_verts` vertices first (weapon attachment triangle), then `model_verts`; a wedge's vertex index counts from the first model vertex. Verified visually (without the offset the mesh is scrambled).
 
-Raw mesh space has Y as the model's vertical axis; `rot_origin`, `origin` and `scale` (and the actor's `DrawScale`) map it to the world (exact formula unverified).
+World position of a mesh vertex v (as the engine draws it; checked visually on pickups, decorations and the EOL_Statues trophies, including actors and meshes with non-zero roll):
+
+world = Location + R(actor Rotation) · R(RotOrigin)⁻¹ · (Scale × DrawScale ⊙ (v − Origin))
+
+R(pitch, yaw, roll) is the UE rotation (axes X = (cp·cy, cp·sy, sp), Y = (sr·sp·cy − cr·sy, sr·sp·sy + cr·cy, −sr·cp), Z = (−(cr·sp·cy + sr·sy), cy·sr − cr·sp·sy, cr·cp)). Mesh Z scale is typically twice X/Y because Z is packed in 10 bits. Wedge U, V bytes are divided by 256. A material's texture: the actor's `MultiSkins[i]`, else the mesh's texture i, else `Skin`.
 
 ## SkeletalMesh
 
@@ -59,5 +63,5 @@ Ref bones (array × (name, flags u32, parent i32)), moves (array × (root speed 
 
 ## Open
 
-- World transform of mesh space (rot origin order, scale) to be fixed when actors are drawn (roadmap Task 13 of the overnight plan).
+- `PrePivot`, environment-mapped meshes (`bMeshEnviroMap`: the Deathmatch trophy draws grey), mesh lighting.
 - Bone weight semantics; vertex animation interpolation between frames (engine behaviour).

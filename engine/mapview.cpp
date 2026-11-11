@@ -68,8 +68,8 @@ int main(int argc, char** argv) {
         }
         PackageSet set(&vfs);
         Scene scene = load_scene(set, argv[2]);
-        std::printf("%s: %zu surfaces in %zu batches, %zu without texture, %zu player starts\n", argv[2], scene.surfaces,
-                    scene.batches.size(), scene.missing_textures, scene.starts.size());
+        std::printf("%s: %zu surfaces in %zu batches, %zu without texture, %zu mesh actors, %zu player starts\n", argv[2],
+                    scene.surfaces, scene.batches.size(), scene.missing_textures, scene.mesh_actors, scene.starts.size());
         if (!lightmap_png.empty()) write_png(lightmap_png, scene.lightmap.width, scene.lightmap.height, scene.lightmap.rgba);
         if (!at && !scene.starts.empty()) {
             const Spawn& s = scene.starts[0];
