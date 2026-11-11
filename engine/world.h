@@ -43,7 +43,19 @@ private:
     void guarded(Obj* o, const std::string& event, std::vector<Value> args = {});
     void destroy(Obj* o);
     void physics(Obj* o, float dt);
-    Hit move(Obj* o, Vec3 delta);  // sweeps the actor's collision box (if it collides with the world)
+    // Sweeps the actor's collision box (if it collides with the world); *what = what it hit (LevelInfo = the BSP).
+    Hit move(Obj* o, Vec3 delta, Obj** what = nullptr);
+    // The level BSP and every blocking mover brush; *what = the LevelInfo, a mover or nullptr.
+    Hit trace_world(Obj* self, Vec3 a, Vec3 b, Vec3 extent, Obj** what = nullptr);
+    Hit trace_brush(Obj* mover, Vec3 a, Vec3 b, Vec3 extent);  // one mover alone (no hit if it does not block)
+    void move_brush(Obj* o, float dt);   // PHYS_MovingBrush: InterpolateTo's keyframe glide, carries what stands on it
+    void set_base(Obj* o, Obj* base);    // Base, StandingCount, Detach / Attach / BaseChange
+    struct Brush {
+        Model model;     // the mover's BSP in its local space
+        float radius;    // of its points around the local origin, for a quick rejection
+    };
+    std::map<Obj*, Brush> movers_;
+    void add_mover(Obj* o);  // reads its Brush model (throws on bad data)
     const LodMesh::AnimSeq* seq(Obj* o, const std::string& name);  // sequence of the actor's mesh
     // AI (world_ai.cpp): path network from the map's reach specs, routes, latent moves.
     void register_ai();

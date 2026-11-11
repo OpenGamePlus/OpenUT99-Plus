@@ -116,7 +116,9 @@ Reach specs (`Level.reach_specs`) are read by the engine: navigation points' `Pa
 
 Boxes are swept with each node plane pushed out by the box's extent along its normal (the standard expanded-plane method; the original's exact method is **unverified**). A box that starts overlapping solid may move out of it; only entering solid through a plane is a hit. Moving parallel to a plane inside its slab is not entering. Sweep of all maps (`ut_script --maps 5`): of 904 actors falling at the start, 3 are still in the air after 5 s (Assault projectiles in flight); no actor ends inside solid that was not already there in the map data (197 editor cameras, 1 pickup). Walking bots exposed the method's known flaw: at convex edges a box can be classified into the wrong leaf and sink; the world refuses any move that takes an actor's centre from empty space into solid (exact point test), until bevel planes are added.
 
+Mover brushes (`Mover.Brush`, a Model export of the map) carry their own small BSP (6 to 30 nodes in the retail lifts and doors) in local space, read and solid by the same rules. Placement: world = `Location` + R · (local − `PrePivot`), R the actor's `Rotation` matrix. Checked on retail lift shafts: with this transform the top of every lift at key 0 has empty space above its whole footprint (e.g. CTF-Coret: 0 points in solid, against 9 to 36 without the rotation or with it transposed); pitch and roll and `MainScale` / `PostScale` are **unverified** (no retail mover tested uses them).
+
 ## Open
 
 - Calibrating the light colour model against the original; light effects (pulse, flicker, spot cones), dynamic lights, zone fog, sky zone rotation.
-- Meaning of node flags (other than `0x1` = not CSG) and reach flags bits.
+- Meaning of node flags (other than `0x1` = not CSG) and reach flags bits (`0x20` marks the lift center ↔ lift exit paths, 500 units long).

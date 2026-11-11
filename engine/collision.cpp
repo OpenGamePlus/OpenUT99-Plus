@@ -125,4 +125,19 @@ Hit trace(const Model& m, Vec3 start, Vec3 end, Vec3 extent) {
     return s.hit;
 }
 
+Hit trace_placed(const Model& m, Vec3 loc, Vec3 pivot, const float axes[3][3], Vec3 start, Vec3 end, Vec3 extent) {
+    auto local = [&](Vec3 p) {
+        Vec3 d{p.x - loc.x, p.y - loc.y, p.z - loc.z};
+        const float* x = axes[0];
+        const float* y = axes[1];
+        const float* z = axes[2];
+        return Vec3{d.x * x[0] + d.y * x[1] + d.z * x[2] + pivot.x, d.x * y[0] + d.y * y[1] + d.z * y[2] + pivot.y,
+                    d.x * z[0] + d.y * z[1] + d.z * z[2] + pivot.z};
+    };
+    Hit h = trace(m, local(start), local(end), extent);
+    Vec3 n = h.normal;
+    for (int k = 0; k < 3; k++) (&h.normal.x)[k] = n.x * axes[0][k] + n.y * axes[1][k] + n.z * axes[2][k];
+    return h;
+}
+
 }  // namespace ut

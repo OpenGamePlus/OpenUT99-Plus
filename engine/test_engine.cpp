@@ -666,6 +666,28 @@ static void test_collision() {
     floor.flags = 1;  // not CSG: crossing it keeps empty space
     m.nodes[0] = floor;
     assert(!point_solid(m, {0, 0, -1}));
+
+    // A mover brush: local box x +-64, y +-16, z +-8 (outward planes, back of the last is solid), placed at
+    // (1000, 0, 0) with yaw 90 degrees and PrePivot z 8: in the world it spans x 984..1016, y +-64, z -16..0.
+    Model box;
+    const float faces[6][4] = {{1, 0, 0, 64}, {-1, 0, 0, 64}, {0, 1, 0, 16}, {0, -1, 0, 16}, {0, 0, 1, 8}, {0, 0, -1, 8}};
+    for (int k = 0; k < 6; k++) {
+        Node n{};
+        for (int c = 0; c < 4; c++) n.plane[c] = faces[k][c];
+        n.front = -1, n.back = k < 5 ? k + 1 : -1;
+        box.nodes.push_back(n);
+    }
+    const int32_t yaw90[3] = {0, 16384, 0};
+    float axes[3][3];
+    rotation_axes(yaw90, axes[0], axes[1], axes[2]);
+    Vec3 at{1000, 0, 0}, pivot{0, 0, 8};
+    h = trace_placed(box, at, pivot, axes, {1000, -200, -8}, {1000, 200, -8}, {0, 0, 0});  // along the long side
+    assert(h.hit && std::fabs(h.time - 136.f / 400.f) < 0.01f && std::fabs(h.normal.y + 1) < 1e-3f);
+    h = trace_placed(box, at, pivot, axes, {900, 40, -8}, {1100, 40, -8}, {0, 0, 0});  // y 40 is inside once turned
+    assert(h.hit && std::fabs(h.time - 84.f / 200.f) < 0.01f && std::fabs(h.normal.x + 1) < 1e-3f);
+    h = trace_placed(box, at, pivot, axes, {1000, 0, 100}, {1000, 0, -100}, {0, 0, 0});  // top lowered by PrePivot
+    assert(h.hit && std::fabs(h.time - 0.5f) < 0.01f && std::fabs(h.normal.z - 1) < 1e-3f);
+    assert(trace_placed(box, at, pivot, axes, {1000, 0, -8}, {1000, 0, -8}, {10, 10, 10}).start_solid);  // overlap
 }
 
 static void test_unpack_vert() {

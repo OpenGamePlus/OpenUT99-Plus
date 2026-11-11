@@ -22,6 +22,7 @@ engine/
   collision.{h,cpp}  BSP solidity and swept-box traces
   world.{h,cpp}      map actors in the VM, play start, ticks, timers, physics, touching, animation, Actor natives
   world_ai.cpp       walking, path network, routes, latent moves (AI natives)
+  world_mover.cpp    movers: brush collision, keyframe interpolation, bases, encroachment
   lighting.{h,cpp}   lightmap luxels, shadow bits, light colours, atlas
   scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, mesh actors, player starts
   render.{h,cpp}     OpenGL 3.3 renderer (library ut_render)

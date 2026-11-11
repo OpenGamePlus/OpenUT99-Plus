@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — movers: lifts and doors
+
+- `engine/world_mover.cpp`: mover brushes (their own BSP, placed by Location, Rotation and PrePivot, checked on lift shafts) block traces and moves; `PHYS_MovingBrush` glides between keyframes for the retail `Mover` script; bases (`Attach` / `Detach`, riders carried), `EncroachingOn`, `Bump` + `HitWall` on movers, routes calling `SpecialHandling`. A DM-Deck16][ bot waits, rides a lift up and walks on; `--maps 60`: 4,649 units per bot (was 4,084), 47 deaths, no script error.
+- Found on the way: `reachable` saw a raised lift as a 500-unit pit; tags compared with case (`Trigger` events missed their movers); `touches` iterated `actors` while `Touch` spawned (a crash only the chained 60 s sweep hit; found with gdb).
+- Still: routes rarely choose lifts (24 of 151 DM movers moved in 60 s), `JumpSpot`s, items above jump height. Next: blocking between actors, or the player and the renderer joining the world.
+
 ## 2026-11-11 — navigation quality
 
 - Bots travel 2x farther (`--maps 60`: 4,084 units per bot, was 1,968; 28 deaths, was 13; no script error, ASan clean): routes skip the node the bot stands on, moves give up after a second without progress, walking slides up ramps and jumps ledges, pickups need a real touch, `LatentFloat` follows `Sleep` (at 0, bots camped at every item).

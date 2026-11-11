@@ -66,7 +66,7 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
         Value* frame = vm_.prop(self, "AnimFrame");
         Value* looping = vm_.prop(self, "bAnimLoop");
         if (!seqv || !frame || !looping) return;
-        bool same = loop && looping->i && seqv->s == name->s;  // LoopAnim of the running loop keeps its frame
+        bool same = loop && looping->i && iequal(seqv->s, name->s);  // LoopAnim of the running loop keeps its frame
         seqv->s = name->s;
         if (!same) frame->f = 0;
         looping->i = loop;
@@ -95,8 +95,11 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
         if (Value* loop = vm_.prop(self, "bAnimLoop")) loop->i = 0;  // a looping animation finishes its round
         self->wait = [this, self] { return anim_done(self); };
     });
-    vm.add_native("FinishInterpolation", [](Obj* self, std::vector<Value*>&, Value&) {  // shortcut: no interpolation yet
-        if (self) self->sleep = 0;
+    vm.add_native("FinishInterpolation", [this](Obj* self, std::vector<Value*>&, Value&) {  // latent: until it arrives
+        if (self) self->wait = [this, self] {
+            const Value* v = vm_.prop(self, "bInterpolating");
+            return !v || !v->i;
+        };
     });
     vm.add_native("WaitForLanding", [this](Obj* self, std::vector<Value*>&, Value&) {  // latent: until not falling
         if (self) self->wait = [this, self] { return vm_.prop(self, "Physics")->i != 2; };
@@ -132,22 +135,23 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
     // FastTrace(vector TraceEnd, optional vector TraceStart): true if the world does not block the line.
     vm.add_native("FastTrace", [this](Obj* self, std::vector<Value*>& a, Value& r) {
         const Value* from = a[1] ? a[1] : vm_.prop(self, "Location");
-        r.i = !has_model_ || !from || !trace(model_, {from->v[0], from->v[1], from->v[2]}, {a[0]->v[0], a[0]->v[1], a[0]->v[2]}, {}).hit;
+        r.i = !from || !trace_world(self, {from->v[0], from->v[1], from->v[2]}, {a[0]->v[0], a[0]->v[1], a[0]->v[2]}, {}).hit;
     });
     // Trace(out HitLocation, out HitNormal, TraceEnd, optional TraceStart, optional bTraceActors, optional Extent)
     vm.add_native("Trace", [this](Obj* self, std::vector<Value*>& a, Value& r) {
         const Value* from = a[3] ? a[3] : vm_.prop(self, "Location");
-        if (!has_model_ || !from) return;
+        if (!from) return;
         Vec3 s0{from->v[0], from->v[1], from->v[2]}, e{a[2]->v[0], a[2]->v[1], a[2]->v[2]};
         Vec3 ext = a[5] ? Vec3{a[5]->v[0], a[5]->v[1], a[5]->v[2]} : Vec3{0, 0, 0};
-        Hit h = trace(model_, s0, e, ext);
+        Obj* wall = nullptr;
+        Hit h = trace_world(self, s0, e, ext, &wall);
         float t = h.hit ? h.time : 1;
         Vec3 n = h.normal;
         Obj* actor = a[4] && a[4]->i ? trace_actors(self, s0, e, &t, &n) : nullptr;  // shortcut: actors as lines, no extent
         if (!h.hit && !actor) return;
         a[0]->v[0] = s0.x + (e.x - s0.x) * t, a[0]->v[1] = s0.y + (e.y - s0.y) * t, a[0]->v[2] = s0.z + (e.z - s0.z) * t;
         a[1]->v[0] = n.x, a[1]->v[1] = n.y, a[1]->v[2] = n.z;
-        r.o = actor ? actor : level_info;  // the world (BSP) is reported as the LevelInfo
+        r.o = actor ? actor : wall;  // the world (BSP) is reported as the LevelInfo
     });
     vm.add_native("describeSpec", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: reach specs not loaded yet
     vm.add_native("SetOwner", [&vm](Obj* self, std::vector<Value*>& a, Value&) {
@@ -160,12 +164,22 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
     vm.add_native("GetNetworkNumber", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: no network: ""
     vm.add_native("DetachDecal", [](Obj*, std::vector<Value*>&, Value&) {});
     vm.add_native("AttachDecal", [](Obj*, std::vector<Value*>&, Value&) {});       // shortcut: no decals yet: None
-    vm.add_native("SetBase", [&vm](Obj* self, std::vector<Value*>& a, Value&) {
-        if (Value* p = vm.prop(self, "Base")) p->o = a[0]->o;  // shortcut: BaseChange events not sent yet
-    });
+    vm.add_native("SetBase", [this](Obj* self, std::vector<Value*>& a, Value&) { set_base(self, a[0]->o); });
     // Never write into the install (rule: <UT99_DIR> is read-only for us); config writes are dropped.
     vm.add_native("SaveConfig", [](Obj*, std::vector<Value*>&, Value&) {});
     vm.add_native("ConsoleCommand", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: no console yet, returns ""
+    // ParseKillMessage(Killer, Victim, Weapon, DeathMessage): %k, %o, %w filled in (the UT message convention).
+    vm.add_native("ParseKillMessage", [](Obj*, std::vector<Value*>& a, Value& r) {
+        std::string out;
+        const std::string& m = a[3]->s;
+        for (size_t i = 0; i < m.size(); i++) {
+            char c = i + 1 < m.size() && m[i] == '%' ? m[i + 1] : 0;
+            const std::string* sub = c == 'k' ? &a[0]->s : c == 'o' ? &a[1]->s : c == 'w' ? &a[2]->s : nullptr;
+            if (sub) out += *sub, i++;
+            else out += m[i];
+        }
+        r.s = out;
+    });
     vm.add_native("GetNextIntDesc", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: .int lists not read yet
     // Pawn list of the level: Level.PawnList -> nextPawn -> ...
     vm.add_native("AddPawn", [this](Obj* self, std::vector<Value*>&, Value&) {
@@ -204,7 +218,7 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
         return d[0] * d[0] + d[1] * d[1] + d[2] * d[2] <= a[2]->f * a[2]->f;
     };
     vm.add_native("AllActors", [this, iterate](Obj*, std::vector<Value*>& a, Value&) {
-        iterate(a, [&](Obj* o) { return !a[2] || a[2]->s == "None" || vm_.prop(o, "Tag")->s == a[2]->s; });
+        iterate(a, [&](Obj* o) { return !a[2] || a[2]->s == "None" || iequal(vm_.prop(o, "Tag")->s, a[2]->s); });
     });
     vm.add_native("ChildActors", [this, iterate](Obj* self, std::vector<Value*>& a, Value&) {
         iterate(a, [&](Obj* o) { return vm_.prop(o, "Owner")->o == self; });
@@ -221,7 +235,7 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
         const Value* from = a[5] ? a[5] : vm_.prop(self, "Location");
         if (!from) return;
         Vec3 s0{from->v[0], from->v[1], from->v[2]}, e{a[4]->v[0], a[4]->v[1], a[4]->v[2]};
-        Hit wh = has_model_ ? trace(model_, s0, e, {0, 0, 0}) : Hit{};  // shortcut: lines only, Extent ignored
+        Hit wh = trace_world(self, s0, e, {0, 0, 0});  // shortcut: lines only, Extent ignored
         std::vector<std::pair<float, std::pair<Obj*, Vec3>>> hits;
         std::set<Obj*> skip;
         for (;;) {  // every cylinder crossed before the wall, by repeating the nearest-hit search
@@ -298,6 +312,13 @@ void World::load(const std::string& map, const std::string& default_game) {
         bool camera = false;  // editor viewpoints: PlayerPawns that would never be ready (unverified removal)
         for (Obj* c = o->cls; c && !camera; c = vm_.super_of(c)) camera = vm_.name_of(c) == "Camera";
         if (camera) continue;
+        bool mover = false;
+        for (Obj* c = o->cls; c && !mover; c = vm_.super_of(c)) mover = vm_.name_of(c) == "Mover";
+        if (mover) try {
+                add_mover(o);
+            } catch (const std::exception& e) {
+                errors["mover brush: " + strip(e.what())]++;
+            }
         actors.push_back(o);
     }
     for (Obj* o : actors) {
@@ -370,9 +391,9 @@ void World::touches(Obj* o) {
         const Value* v = vm_.prop(x, n);
         return v ? v->f : 0.f;
     };
-    auto collides = [this](Obj* x) {
+    auto collides = [this](Obj* x) {  // movers collide by their brush (trace_world), not a cylinder
         const Value* c = vm_.prop(x, "bCollideActors");
-        return c && c->i && !deleted_.count(x);
+        return c && c->i && !deleted_.count(x) && !movers_.count(x);
     };
     auto set_touching = [this](Obj* x, Obj* other, bool add) {  // Actor.Touching[4]
         std::vector<Value>* t = vm_.prop_array(x, "Touching");
@@ -384,7 +405,8 @@ void World::touches(Obj* o) {
     const Value* lo = vm_.prop(o, "Location");
     if (!lo) return;
     bool mine = collides(o);
-    for (Obj* x : actors) {
+    for (size_t i = 0; i < actors.size(); i++) {  // index loop: Touch handlers may spawn actors
+        Obj* x = actors[i];
         if (x == o) continue;
         bool was = touching_.count({o, x}) > 0;
         bool now = false;
@@ -467,21 +489,23 @@ void World::update_region(Obj* o) {
     set_region(o, "HeadRegion", {at.x, at.y, at.z + (eye ? eye->f : 0)}, "HeadZoneChange");
 }
 
-Hit World::move(Obj* o, Vec3 d) {
+Hit World::move(Obj* o, Vec3 d, Obj** what) {
     Value* loc = vm_.prop(o, "Location");
     if (!loc) return {};
     Vec3 from{loc->v[0], loc->v[1], loc->v[2]};
     Value* collide = vm_.prop(o, "bCollideWorld");
     Hit h;
-    if (has_model_ && collide && collide->i) {
+    if (what) *what = nullptr;
+    if (collide && collide->i) {
         Value* r = vm_.prop(o, "CollisionRadius");
         Value* hh = vm_.prop(o, "CollisionHeight");
         Vec3 ext{r ? r->f : 0, r ? r->f : 0, hh ? hh->f : 0};  // shortcut: the collision cylinder as a box
-        h = trace(model_, from, {from.x + d.x, from.y + d.y, from.z + d.z}, ext);
+        h = trace_world(o, from, {from.x + d.x, from.y + d.y, from.z + d.z}, ext, what);
         Vec3 to{from.x + d.x * h.time, from.y + d.y * h.time, from.z + d.z * h.time};
         // shortcut: expanded planes (no bevels) can let a box sink at convex edges; the exact point test refuses a
         // move that takes the centre from empty space into solid. Upgrade with bevel planes.
-        if (!point_solid(model_, from) && point_solid(model_, to)) {
+        if (has_model_ && !point_solid(model_, from) && point_solid(model_, to)) {
+            if (what) *what = level_info;
             float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
             Hit blocked;
             blocked.hit = true, blocked.time = 0;
@@ -505,9 +529,10 @@ void World::physics(Obj* o, float dt) {
         n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
         return n;
     };
+    Obj* hit_actor = nullptr;
     auto wall = [&](const Hit& h) {
         Value w = Value::of(VT::Object);
-        w.o = level_info;
+        w.o = hit_actor ? hit_actor : level_info;
         guarded(o, "HitWall", {hit_value(h), w});
     };
     switch (mode->i) {
@@ -524,7 +549,7 @@ void World::physics(Obj* o, float dt) {
             float speed = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
             if (term && term->f > 0 && speed > term->f)
                 for (int k = 0; k < 3; k++) v[k] *= term->f / speed;
-            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt});
+            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt}, &hit_actor);
             if (!h.hit) return;
             if (h.normal.z >= 0.7f) {
                 guarded(o, "Landed", {hit_value(h)});
@@ -541,14 +566,17 @@ void World::physics(Obj* o, float dt) {
             }
             return;
         }
+        case 9:  // moving brush (world_mover.cpp)
+            move_brush(o, dt);
+            return;
         case 6: {  // projectile
-            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt});
+            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt}, &hit_actor);
             if (h.hit) wall(h);
             return;
         }
         case 3:  // swimming: shortcut, moves like flying (no buoyancy or water friction yet)
         case 4: {  // flying: slide along what it hits
-            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt});
+            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt}, &hit_actor);
             if (h.hit) {
                 wall(h);
                 float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
@@ -571,7 +599,7 @@ const LodMesh::AnimSeq* World::seq(Obj* o, const std::string& name) {
     if (it == meshes_.end()) {
         std::unique_ptr<LodMesh> lod;
         std::string cls = vm_.name_of(vm_.class_of(m));
-        if (cls.size() == 7 && std::equal(cls.begin(), cls.end(), "lodmesh", [](char x, char y) { return std::tolower(x) == y; })) {
+        if (iequal(cls, "LodMesh")) {
             try {
                 lod = std::make_unique<LodMesh>(read_lod_mesh(*m->pkg, m->pkg->exports[size_t(m->ref - 1)]));
             } catch (const std::exception& e) {
@@ -582,9 +610,7 @@ const LodMesh::AnimSeq* World::seq(Obj* o, const std::string& name) {
     }
     if (!it->second) return nullptr;
     for (const LodMesh::AnimSeq& s : it->second->seqs)
-        if (s.name.size() == name.size() && std::equal(s.name.begin(), s.name.end(), name.begin(),
-                                                       [](char x, char y) { return std::tolower(x) == std::tolower(y); }))
-            return &s;
+        if (iequal(s.name, name)) return &s;
     return nullptr;
 }
 

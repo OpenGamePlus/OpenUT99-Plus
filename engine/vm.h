@@ -156,4 +156,11 @@ private:
     int depth_ = 0;
 };
 
+// UnrealScript names compare without case (ASCII).
+bool iequal(const std::string& a, const std::string& b);
+
+// Axes of a rotator (Pitch, Yaw, Roll; 65536 units per turn) as unit vectors: X forward, Y right, Z up. Local ->
+// world is x * X + y * Y + z * Z (public UE1 rotation matrix, unverified).
+void rotation_axes(const int32_t rot[3], float x[3], float y[3], float z[3]);
+
 }  // namespace ut

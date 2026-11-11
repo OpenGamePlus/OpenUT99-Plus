@@ -31,17 +31,17 @@ bool World::reachable(Obj* pawn, Vec3 dest) {
     // 48 units, no climb above 120 or drop below 400 (unverified); the original simulates the walk
     Vec3 from = vec_of(vm_.prop(pawn, "Location"));
     if (dest.z - from.z > 120) return false;
-    if (!has_model_) return true;
+    if (!has_model_ && movers_.empty()) return true;
     const Value* rv = vm_.prop(pawn, "CollisionRadius");
     const Value* hv = vm_.prop(pawn, "CollisionHeight");
     float r = rv ? rv->f * 0.8f : 0, h = hv ? std::max(0.f, hv->f - 25) : 0;
-    if (trace(model_, {from.x, from.y, from.z + 25}, {dest.x, dest.y, dest.z + 25}, {r, r, h}).hit) return false;
+    if (trace_world(pawn, {from.x, from.y, from.z + 25}, {dest.x, dest.y, dest.z + 25}, {r, r, h}).hit) return false;
     if (!vm_.prop(pawn, "Physics") || vm_.prop(pawn, "Physics")->i != 1) return true;  // flyers and swimmers
     float len = dist2d(from, dest), feet = hv ? hv->f : 0;
     for (float s = 48; s < len; s += 48) {
         float k = s / len;
         Vec3 p{from.x + (dest.x - from.x) * k, from.y + (dest.y - from.y) * k, from.z + (dest.z - from.z) * k};
-        if (!trace(model_, p, {p.x, p.y, p.z - feet - 400}, {0, 0, 0}).hit) return false;  // a pit
+        if (!trace_world(pawn, p, {p.x, p.y, p.z - feet - 400}, {0, 0, 0}).hit) return false;  // a pit (lifts are floor)
     }
     return true;
 }
@@ -50,7 +50,7 @@ bool World::reachable(Obj* pawn, Vec3 dest) {
 Obj* World::trace_actors(Obj* self, Vec3 a, Vec3 b, float* t_hit, Vec3* normal, const std::set<Obj*>* skip) {
     Obj* best = nullptr;
     for (Obj* o : actors) {
-        if (o == self || deleted_.count(o) || (skip && skip->count(o))) continue;
+        if (o == self || deleted_.count(o) || (skip && skip->count(o)) || movers_.count(o)) continue;
         const Value* c = vm_.prop(o, "bCollideActors");
         const Value* pt = vm_.prop(o, "bProjTarget");
         const Value* ba = vm_.prop(o, "bBlockActors");
@@ -141,6 +141,18 @@ Obj* World::route(Obj* pawn, const std::function<float(Obj*, float)>& weight, fl
         path.erase(path.begin());
     if (std::vector<Value>* cache = vm_.prop_array(pawn, "RouteCache"))
         for (size_t k = 0; k < cache->size(); k++) (*cache)[k].o = k < path.size() ? path[k] : nullptr;
+    // The step may redirect the pawn (a lift's center sends it to wait at the exit, to a trigger...). Actor's default
+    // SpecialHandling answers None: keep the step then (unverified: the original may treat None as "no way").
+    const Value* special = vm_.prop(pawn, "bCanDoSpecial");
+    if (special && special->i) {
+        Value other = Value::of(VT::Object), ret;
+        other.o = pawn;
+        try {
+            if (vm_.event(path.front(), "SpecialHandling", {other}, &ret) && ret.o && !deleted_.count(ret.o)) return ret.o;
+        } catch (const std::exception& e) {
+            errors[e.what()]++;
+        }
+    }
     return path.front();
 }
 
@@ -163,7 +175,18 @@ void World::walk(Obj* o, float dt) {
     }
     v[2] = 0;
     Vec3 delta{v[0] * dt, v[1] * dt, 0};
-    Hit h = move(o, delta);
+    Obj* blocker = nullptr;
+    Hit h = move(o, delta, &blocker);
+    if (h.hit && blocker && movers_.count(blocker)) {  // walking into a door or lift: Bump both, HitWall the walker
+        Value a = Value::of(VT::Object), b = Value::of(VT::Object), n = Value::of(VT::Vector);
+        a.o = o, b.o = blocker;
+        n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
+        guarded(blocker, "Bump", {a});
+        guarded(o, "Bump", {b});
+        // shortcut: HitWall only for movers (bots open doors there); BSP walls would cancel moves our coarse steering
+        // still slides along. Upgrade with the original step-up failure rule once steering follows paths closely.
+        if (!deleted_.count(o)) guarded(o, "HitWall", {n, b});
+    }
     for (int k = 0; k < 2 && h.hit && h.normal.z >= 0.7f; k++) {  // a ramp: go on along its surface
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
         float dot = rest.x * h.normal.x + rest.y * h.normal.y;
@@ -188,15 +211,30 @@ void World::walk(Obj* o, float dt) {
             if (alen > 0 && dest && can && can->i && jz && jz->f > 0 && dest->v[2] > loc->v[2] + 25) {
                 v[2] = jz->f;
                 vm_.prop(o, "Physics")->i = 2;
+                set_base(o, nullptr);
                 return;
             }
         }
     }
-    Hit down = move(o, {0, 0, -27});  // stay on the floor
+    Obj* floor = nullptr;
+    Vec3 before = vec_of(loc);
+    Hit down = move(o, {0, 0, -27}, &floor);  // stay on the floor
+    const Value* old_base = vm_.prop(o, "Base");
+    if (down.hit && floor == level_info && old_base && movers_.count(old_base->o)) {
+        // Riding a lift with an edge inside a wall: the brush it stands on stays its base, or the lift would
+        // encroach on it and stop.
+        const Value* r = vm_.prop(o, "CollisionRadius");
+        const Value* hh = vm_.prop(o, "CollisionHeight");
+        Vec3 ext{r ? r->f : 0, r ? r->f : 0, hh ? hh->f : 0};
+        if (trace_brush(old_base->o, before, {before.x, before.y, before.z - 27}, ext).hit) floor = old_base->o;
+    }
     if (!down.hit) {
         loc->v[2] += 27;  // nothing below: undo the probe and fall
         vm_.prop(o, "Physics")->i = 2;
+        set_base(o, nullptr);
         guarded(o, "Falling");
+    } else {
+        set_base(o, floor);  // the LevelInfo on BSP floors (unverified), else the mover it stands on
     }
 }
 
@@ -334,6 +372,9 @@ void World::register_ai() {
         if (a[0]->o) turn(self, loc(a[0]->o));
     });
     vm.add_native("ClearPaths", [](Obj*, std::vector<Value*>&, Value&) {});
+    vm.add_native("StopWaiting", [](Obj* self, std::vector<Value*>&, Value&) {  // ends a latent Sleep
+        if (self && self->sleep > 0) self->sleep = 0;
+    });
     vm.add_native("PickWallAdjust", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: never finds one
     vm.add_native("EAdjustJump", [this](Obj* self, std::vector<Value*>&, Value& r) {  // shortcut: straight up jump
         const Value* v = vm_.prop(self, "Velocity");

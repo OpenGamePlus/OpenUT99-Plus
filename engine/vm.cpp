@@ -23,8 +23,6 @@ std::string lower(std::string s) {
     return s;
 }
 
-bool iequal(const std::string& a, const std::string& b) { return lower(a) == lower(b); }
-
 // Character operations count code points, so strings are decoded from UTF-8 for them.
 std::u32string decode(const std::string& s) {
     std::u32string out;
@@ -1210,15 +1208,7 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
     NATIVE(Divide_RotatorFloat) { for (int k = 0; k < 3; k++) r.r[k] = a[1]->f != 0 ? to_int(float(a[0]->r[k]) / a[1]->f) : 0; };
     NATIVE(MultiplyEqual_RotatorFloat) { for (int k = 0; k < 3; k++) r.r[k] = a[0]->r[k] = to_int(float(a[0]->r[k]) * a[1]->f); };
     NATIVE(DivideEqual_RotatorFloat) { for (int k = 0; k < 3; k++) r.r[k] = a[0]->r[k] = a[1]->f != 0 ? to_int(float(a[0]->r[k]) / a[1]->f) : 0; };
-    // Axes of a rotation (public UE1 rotation matrix, unverified): X forward, Y right, Z up.
-    auto axes = [](const Value& rot, float x[3], float y[3], float z[3]) {
-        float sp = std::sin(float(rot.r[0]) * kRotToRad), cp = std::cos(float(rot.r[0]) * kRotToRad);
-        float sy = std::sin(float(rot.r[1]) * kRotToRad), cy = std::cos(float(rot.r[1]) * kRotToRad);
-        float sr = std::sin(float(rot.r[2]) * kRotToRad), cr = std::cos(float(rot.r[2]) * kRotToRad);
-        x[0] = cp * cy, x[1] = cp * sy, x[2] = sp;
-        y[0] = sr * sp * cy - cr * sy, y[1] = sr * sp * sy + cr * cy, y[2] = -sr * cp;
-        z[0] = -(cr * sp * cy + sr * sy), z[1] = cy * sr - cr * sp * sy, z[2] = cr * cp;
-    };
+    auto axes = [](const Value& rot, float x[3], float y[3], float z[3]) { rotation_axes(rot.r, x, y, z); };
     by_name_["greatergreater_vectorrotator"] = [axes](Obj*, std::vector<Value*>& a, Value& r) {  // local -> world
         float x[3], y[3], z[3];
         axes(*a[1], x, y, z);
@@ -1336,6 +1326,17 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
         log.push_back((a[1] ? a[1]->s : std::string("ScriptLog")) + ": " + a[0]->s);
     };
     by_name_["warn"] = [this](Obj*, std::vector<Value*>& a, Value&) { log.push_back("ScriptWarning: " + a[0]->s); };
+}
+
+bool iequal(const std::string& a, const std::string& b) { return lower(a) == lower(b); }
+
+void rotation_axes(const int32_t rot[3], float x[3], float y[3], float z[3]) {
+    float sp = std::sin(float(rot[0]) * kRotToRad), cp = std::cos(float(rot[0]) * kRotToRad);
+    float sy = std::sin(float(rot[1]) * kRotToRad), cy = std::cos(float(rot[1]) * kRotToRad);
+    float sr = std::sin(float(rot[2]) * kRotToRad), cr = std::cos(float(rot[2]) * kRotToRad);
+    x[0] = cp * cy, x[1] = cp * sy, x[2] = sp;
+    y[0] = sr * sp * cy - cr * sy, y[1] = sr * sp * sy + cr * cy, y[2] = -sr * cp;
+    z[0] = -(cr * sp * cy + sr * sy), z[1] = cy * sr - cr * sp * sy, z[2] = cr * cp;
 }
 
 }  // namespace ut

@@ -10,7 +10,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wconversion)
 endif()
 
-add_library(ut STATIC engine/upkg.cpp engine/config.cpp engine/vfs.cpp engine/texture.cpp engine/level.cpp engine/packages.cpp engine/png.cpp engine/scene.cpp engine/lighting.cpp engine/script.cpp engine/mesh.cpp engine/vm.cpp engine/world.cpp engine/world_ai.cpp engine/collision.cpp)
+add_library(ut STATIC engine/upkg.cpp engine/config.cpp engine/vfs.cpp engine/texture.cpp engine/level.cpp engine/packages.cpp engine/png.cpp engine/scene.cpp engine/lighting.cpp engine/script.cpp engine/mesh.cpp engine/vm.cpp engine/world.cpp engine/world_ai.cpp engine/world_mover.cpp engine/collision.cpp)
 target_include_directories(ut PUBLIC engine)
 
 find_package(PkgConfig REQUIRED)
