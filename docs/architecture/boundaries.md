@@ -26,12 +26,13 @@
 | `engine/script.*` | bytecode walker, class objects (defaults) | `upkg` |
 | `engine/mesh.*` | LodMesh | `upkg` |
 | `engine/vm.*` | UnrealScript VM: functions in memory form, interpreter, natives by declared name | `upkg`, `script`, `packages` |
+| `engine/world.*` | map actors as VM instances, play start, ticking, timers, Actor natives | `vm`, `level`, `packages` |
 | `engine/lighting.*` | luxel positions, shadow bits, light colours, atlas packer | `level` |
 | `engine/scene.*` | map → texture batches, baked lightmap atlas, sky position, mesh actors (property lookup through class defaults), player starts (no GL) | `packages`, `level`, `texture`, `lighting`, `script`, `mesh` |
 | `engine/render.*` (library `ut_render`) | OpenGL 3.3 renderer, screenshots | `scene`, `png`, epoxy |
 | `engine/mapview.cpp` | executable `ut_mapview`: window, input, `--shot`, `--check` | `render`, `scene`, `vfs`, SDL2 |
 | `engine/ut_dump.cpp` | executable: package summary, property counts, model, class-default and mesh counts, dependency check | `upkg`, `level`, `script`, `mesh`, `config`, `vfs` |
-| `engine/ut_script.cpp` | executable: run one script function, print return value, out parameters and log | `vm`, `config`, `vfs` |
+| `engine/ut_script.cpp` | executable: run a script function, a class's auto state, or maps; sweeps | `vm`, `world`, `config`, `vfs` |
 | `tools/compare_engine.py` | runs `ut_dump` against the Python readers on an install | `upkg`, `uprops` (Python) |
 
 ## Rules

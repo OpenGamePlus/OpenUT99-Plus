@@ -22,6 +22,7 @@
 #include "upkg.h"
 #include "vfs.h"
 #include "vm.h"
+#include "world.h"
 
 using namespace ut;
 using Bytes = std::vector<uint8_t>;
@@ -397,12 +398,15 @@ static void test_read_class() {
 // 17 instance variable int X of T (default 5); 18 Get(): X = 3; return X * default.X; 20 Null(): return None.X * 4.
 // 22 latent native Sleep(float) (256); 24 auto state S: Get() returns 99; code Begin: X = 7; Sleep(1); X = 9; stop.
 // 27 Call(): return Get(), a virtual call that sees the state.
+// 29 iterator native Three(out int V) (300); 31 Sum(): S = 1; ForEach Three(V) S = S * V; return S.
+// 35-37 TimerRate, TimerCounter, bTimerLoop of T; 38 Timer(): X = X * 2.
 static Package vm_package() {
     Package p;
     p.version = 69;
     p.names = {"None", "T", "Mul", "A", "B", "C", "ReturnValue", "Multiply_IntInt", "Function", "IntProperty",
                "Core", "Class", "OrOr_BoolBool", "BoolProperty", "Or", "X", "Get", "Null",
-               "Sleep", "Seconds", "FloatProperty", "S", "Begin", "State", "Call"};
+               "Sleep", "Seconds", "FloatProperty", "S", "Begin", "State", "Call",
+               "Three", "Sum", "V", "TimerRate", "TimerCounter", "bTimerLoop", "Timer"};
     p.imports = {{"Core", "Class", 0, "Function"}, {"Core", "Class", 0, "IntProperty"}, {"Core", "Class", 0, "BoolProperty"},
                  {"Core", "Class", 0, "FloatProperty"}, {"Core", "Class", 0, "State"}};
     auto add = [&](int32_t cls, int32_t outer, const char* name, const Bytes& d) {
@@ -481,6 +485,27 @@ static Package vm_package() {
     put(call, cindex(16)); call.push_back(0x16);
     add(-1, 1, "Call", func(28, call, 7, 0, 0));
     add(-2, 27, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    add(-1, 1, "Three", func(30, {}, 0, 300, kFuncNative | kFuncIterator | 1));
+    add(-2, 29, "V", prop(0, kParm | kOutParm));
+    Bytes sum = {0x0F, 0x00};
+    put(sum, cindex(32)); sum.push_back(0x26);                                                  // 0: S = 1
+    sum.push_back(0x2F); sum.push_back(0x61); sum.push_back(0x2C); sum.push_back(0x00);         // 7: ForEach Three(V)
+    put(sum, cindex(33)); sum.push_back(0x16); put(sum, uint16_t(37));
+    sum.push_back(0x0F); sum.push_back(0x00); put(sum, cindex(32)); sum.push_back(0x90);       // 18: S = S * V
+    sum.push_back(0x00); put(sum, cindex(32)); sum.push_back(0x00); put(sum, cindex(33)); sum.push_back(0x16);
+    sum.push_back(0x31); sum.push_back(0x30);                                                   // 36: next; 37: pop
+    sum.push_back(0x04); sum.push_back(0x00); put(sum, cindex(32));                             // 38: return S
+    add(-1, 1, "Sum", func(32, sum, 44, 0, 0));
+    add(-2, 31, "S", prop(33, 0));
+    add(-2, 31, "V", prop(34, 0));
+    add(-2, 31, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    add(-4, 1, "TimerRate", prop(0, 0));
+    add(-4, 1, "TimerCounter", prop(0, 0));
+    add(-3, 1, "bTimerLoop", prop(0, 0));
+    Bytes timer = {0x0F, 0x01};
+    put(timer, cindex(17)); timer.push_back(0x90); timer.push_back(0x01); put(timer, cindex(17));
+    timer.push_back(0x2C); timer.push_back(2); timer.push_back(0x16);
+    add(-1, 1, "Timer", func(0, timer, 15, 0, 0));
     return p;
 }
 
@@ -516,6 +541,28 @@ static void test_vm() {
     assert(x.i == 9 && !self->code_active);                            // woke after 1 s, ran to stop
     assert(!vm.goto_state(self, "Missing") && vm.goto_state(self, "None") && !self->state);
     assert(vm.call(call, self, none).i == 15);
+    vm.add_native("Three", [&vm](Obj*, std::vector<Value*>&, Value&) {
+        for (int k = 1; k <= 3; k++) {
+            Value v = Value::of(VT::Int);
+            v.i = k;
+            vm.iterator_items.push_back(v);
+        }
+    });
+    assert(vm.call(vm.function(p, 31), self, none).i == 6);  // 1 * 1 * 2 * 3: every item visited once
+    PackageSet set(nullptr);
+    World w(vm, set);
+    Obj* a = w.spawn(t, nullptr, nullptr, nullptr, nullptr, nullptr);
+    Value& ax = a->vars[vm.object(p, 17)][0];
+    vm.prop(a, "TimerRate")->f = 0.25f;
+    vm.prop(a, "bTimerLoop")->i = 1;
+    for (int k = 0; k < 3; k++) w.tick(0.1f);
+    assert(ax.i == 10);  // fired once at 0.3 s
+    w.tick(0.2f);
+    assert(ax.i == 20);  // looping: counter 0.05 + 0.2 reached the rate again
+    vm.prop(a, "bTimerLoop")->i = 0;
+    for (int k = 0; k < 6; k++) w.tick(0.1f);
+    assert(ax.i == 40 && vm.prop(a, "TimerRate")->f == 0);  // one-shot: fired once, then off
+    assert(w.errors.empty());
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);

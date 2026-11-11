@@ -1,6 +1,8 @@
 // ut_script DIR Package.Class.Function [ARG...]   run one UnrealScript function in the VM and print its results
 // ut_script DIR --run Package.Class [TICKS]       spawn the class, enter its auto state, tick its state code (0.1 s)
 // ut_script DIR --states                          every class of System/*.u: auto state run for 30 ticks, outcomes
+// ut_script DIR --map MAP [SECONDS]               load a map's actors, begin play, tick (0.05 s); errors and log ranked
+// ut_script DIR --maps [SECONDS]                  the same for every map of Maps/, errors summed over all of them
 // Arguments are given per parameter (int, float, bool True/False, string, name); out parameters are printed after.
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +16,7 @@
 #include "packages.h"
 #include "vfs.h"
 #include "vm.h"
+#include "world.h"
 
 namespace {
 
@@ -57,6 +60,62 @@ std::string run_states(ut::Vm& vm, ut::Obj* cls, int ticks, bool* has_auto) {
     }
 }
 
+void ranked(const std::map<std::string, int>& counts, int limit) {
+    std::multimap<int, std::string> top;
+    for (const auto& [e, n] : counts) top.emplace(-n, e);
+    int shown = 0;
+    for (const auto& [n, e] : top)
+        if (shown++ < limit) std::printf("%6d  %s\n", -n, e.c_str());
+}
+
+int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float seconds, const std::string& game) {
+    ut::World w(vm, packages);
+    w.load(name, game);
+    size_t loaded = w.actors.size();
+    w.begin_play();
+    int ticks = 0;
+    for (; float(ticks) * 0.05f < seconds; ticks++) w.tick(0.05f);
+    std::map<std::string, int> lines;
+    for (const std::string& l : vm.log) lines[l]++;
+    int errors = 0;
+    for (const auto& [e, n] : w.errors) errors += n;
+    std::printf("%s: %zu actors loaded, game %s, %zu actors after %d ticks; %d script errors, %zu log lines\n",
+                name.c_str(), loaded, vm.name_of(w.game ? w.game->cls : nullptr).c_str(), w.actors.size(), ticks, errors,
+                vm.log.size());
+    std::printf("errors:\n");
+    ranked(w.errors, 20);
+    std::printf("log:\n");
+    ranked(lines, 15);
+    return 0;
+}
+
+int maps(ut::PackageSet& packages, const std::string& root, float seconds, const std::string& game) {
+    std::map<std::string, int> errors;
+    int count = 0, failed = 0;
+    size_t actors = 0;
+    for (const auto& d : std::filesystem::directory_iterator(root + "/Maps")) {
+        if (d.path().extension() != ".unr") continue;
+        ut::Vm vm(&packages);  // fresh objects per map; packages stay loaded
+        for (const char* n : {"Core", "Engine"})
+            if (const ut::Package* p = packages.get(n)) vm.bind_natives(*p);
+        ut::World w(vm, packages);
+        count++;
+        try {
+            w.load(d.path().stem().string(), game);
+            w.begin_play();
+            for (int t = 0; float(t) * 0.05f < seconds; t++) w.tick(0.05f);
+        } catch (const std::exception& e) {
+            failed++;
+            errors["map failed: " + std::string(e.what())]++;
+        }
+        actors += w.actors.size();
+        for (const auto& [e, n] : w.errors) errors[e] += n;
+    }
+    std::printf("%d maps, %d failed, %zu actors alive at the end\n", count, failed, actors);
+    ranked(errors, 25);
+    return 0;
+}
+
 int states(ut::Vm& vm, ut::PackageSet& packages, const std::string& root) {
     std::map<std::string, int> errors;  // message without the function name -> count
     int classes = 0, autos = 0, failed = 0;
@@ -94,13 +153,27 @@ int main(int argc, char** argv) {
     }
     try {
         std::string root = argv[1], path = argv[2];
-        if (path == "--states" || path == "--run") {
+        if (path == "--maps") {
+            ut::Vfs vfs(root, ut::read_ini(root + "/System/UnrealTournament.ini"));
+            ut::PackageSet packages(&vfs);
+            ut::Ini ini = ut::read_ini(root + "/System/UnrealTournament.ini");
+            const auto& game = ini["Engine.Engine"]["DefaultGame"];
+            return maps(packages, root, argc > 3 ? std::strtof(argv[3], nullptr) : 5.f, game.empty() ? "" : game[0]);
+        }
+        if (path == "--states" || path == "--run" || path == "--map") {
             ut::Vfs vfs(root, ut::read_ini(root + "/System/UnrealTournament.ini"));
             ut::PackageSet packages(&vfs);
             ut::Vm vm(&packages);
             for (const char* n : {"Core", "Engine"})
                 if (const ut::Package* p = packages.get(n)) vm.bind_natives(*p);
+            ut::World world(vm, packages);  // Actor natives, an empty level
             if (path == "--states") return states(vm, packages, root);
+            if (path == "--map") {
+                if (argc < 4) throw std::runtime_error("--map needs a map name");
+                ut::Ini ini = ut::read_ini(root + "/System/UnrealTournament.ini");
+                const auto& game = ini["Engine.Engine"]["DefaultGame"];
+                return map(vm, packages, argv[3], argc > 4 ? std::strtof(argv[4], nullptr) : 5.f, game.empty() ? "" : game[0]);
+            }
             std::string target = argc > 3 ? argv[3] : "";
             size_t dot = target.find('.');
             const ut::Package* p = dot == std::string::npos ? nullptr : packages.get(target.substr(0, dot));
@@ -121,6 +194,7 @@ int main(int argc, char** argv) {
         ut::Vm vm(&packages);
         for (const char* n : {"Core", "Engine"})
             if (const ut::Package* p = packages.get(n)) vm.bind_natives(*p);
+        ut::World world(vm, packages);  // Actor natives; the function's object joins this empty world
         const ut::Package* p = packages.get(pkg_name);
         if (!p) throw std::runtime_error("package not found: " + pkg_name);
         int32_t cls_ref = 0, fn_ref = 0;
@@ -138,7 +212,7 @@ int main(int argc, char** argv) {
         ut::Value ret;
         std::string error;
         try {
-            ret = vm.call(f, vm.spawn(vm.object(*p, cls_ref)), args);
+            ret = vm.call(f, world.spawn(vm.object(*p, cls_ref), nullptr, nullptr, nullptr, nullptr, nullptr), args);
         } catch (const std::exception& e) {
             error = e.what();
         }

@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — actor world: retail maps run their script
+
+- `engine/world.*`: map actors become VM instances, the game class (`DeathMatchPlus`) is spawned as `Level.Game` with `InitGame`, play events, ticks, timers, `ForEach` iterators, pawn list, spawn / destroy, rotator math, `DynamicLoadObject`. `ut_script --maps 5`: all 83 maps run 5 s with no script error.
+- Learned: without a GameInfo every actor destroys itself in `PreBeginPlay` (`Level.Game.IsRelevant`); what the game spawns during `InitGame` must begin play at once or `DMMutator.MyGame` is None for every actor. Classes like `Core.Class` exist only in C++ (no export). `ForEach` ends at its `0x30`; `continue` = `0x31` + jump.
+- Next: physics and collision against the BSP (falling, walking, traces), then pawns and bots (`MoveTo`, `WaitForLanding`), the remaining stops in `--states`.
+
 ## 2026-11-11 — VM states
 
 - States in the VM: dispatch through the current state and its parents, labels, `GotoState` (EndState / BeginState, `'Auto'`), latent `Sleep`, `tick`. `ut_script --states` is the phase C meter: all 1,604 classes enter their auto state (233 have one); the 346 that stop do so only on engine natives (`SetCollision`, `SetPhysics`, animation, timers).

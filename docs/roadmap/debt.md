@@ -19,6 +19,8 @@
 
 - VM shortcuts (unverified against the original): integer and float division by zero give 0, float → int out of range gives 0, `~=` on floats uses 1e-4, `Caps` is ASCII only, `Rand` / `FRand` use a different generator; text formats of conversions to string; out-of-bounds array indices are clamped with a warning; instances have no numbered names; struct defaults other than Vector / Rotator and struct inheritance are not read; state `ignores` (ignore mask) not applied; after `GotoState` from state code the new code starts on the next tick.
 
+- World placeholders (2026-11-11), each a `shortcut:` in `engine/world.cpp`: no physics (`SetPhysics` only stores the mode, `Move` never blocks), no collision hash or touching, `FastTrace` always clear, `TraceActors` / `TouchingActors` empty, `Visible*Actors` ignore visibility, animation frames do not advance and `FinishAnim` ends at once, no sound (`PlaySound`, `GetSoundDuration` 0), `ConsoleCommand` returns "", `SaveConfig` is dropped (never write into the install), `.int` lists not read, `describeSpec` empty, `Disable` mutes any event name, `SetOwner` / `SetBase` send no events. The play-start order and spawning the game "already begun" are inferred from the scripts, unverified.
+
 - Engine draws mesh actors full bright, frame 0, no `PrePivot` or environment mapping; DXT / 469 compressed textures show a grey checker.
 
 - Light colour model uncalibrated (falloff curve, no N·L, ×2 texture modulation); zero-brightness radius-255 lights leave areas black (DM-Deck16][ spawn). Needs same-spot screenshots of the original.

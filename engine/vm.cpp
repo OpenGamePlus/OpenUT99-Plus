@@ -284,11 +284,19 @@ Function load_state(const Package& p, int32_t ref) {
 }
 
 struct Vm::Frame {
+    Frame(const Function& fn, Obj* s) : f(fn), self(s) {}
     const Function& f;
     Obj* self;
     std::vector<std::vector<Value>> vars;
     size_t pc = 0;
     bool done = false;
+    struct Iter {  // an open ForEach
+        std::vector<Value> items;
+        size_t next = 0;
+        Ref out;
+        size_t body = 0;
+    };
+    std::vector<Iter> iters;
 
     void need(size_t n) const {
         if (pc + n > f.code.size()) throw std::runtime_error(f.name + ": bytecode runs past its end");
@@ -388,7 +396,16 @@ Obj* Vm::object(const Package& p, int32_t ref) {
     if (ref < 0) {
         if (!packages_) throw std::runtime_error("import without a package set: " + object_name(p, ref));
         Object o = packages_->resolve(p, ref);
-        if (!o.exp) throw std::runtime_error("unresolved import " + object_name(p, ref));
+        if (!o.exp) {
+            const Import& im = p.imports[size_t(-ref - 1)];
+            if (im.class_package == "Core" && im.class_name == "Class") {  // intrinsic class (C++ only, no export)
+                std::unique_ptr<Obj>& slot = intrinsic_[lower(object_name(p, im.package) + "." + im.name)];
+                if (!slot) slot = std::make_unique<Obj>();
+                return slot.get();
+            }
+            throw std::runtime_error("unresolved import " + im.class_package + "." + im.class_name + " " +
+                                     object_name(p, im.package) + "." + im.name);
+        }
         pkg = o.package;
         ref = int32_t(o.exp - pkg->exports.data()) + 1;
     }
@@ -470,16 +487,43 @@ Obj* Vm::spawn(Obj* cls) {
     return o;
 }
 
+Obj* Vm::find_prop(Obj* cls, const std::string& name) {
+    auto key = std::make_pair(static_cast<const Obj*>(cls), lower(name));
+    auto it = props_.find(key);
+    if (it != props_.end()) return it->second;
+    Obj* prop = nullptr;
+    for (Obj* c = cls; c && !prop; c = super_of(c))
+        for (size_t i = 0; i < c->pkg->exports.size() && !prop; i++) {
+            const Export& e = c->pkg->exports[i];
+            if (e.package == c->ref && iequal(e.name, name) && is_property(*c->pkg, e)) prop = object(*c->pkg, int32_t(i + 1));
+        }
+    props_[key] = prop;
+    return prop;
+}
+
+Value* Vm::prop(Obj* o, const std::string& name) {
+    Obj* p = o && o->cls ? find_prop(o->cls, name) : nullptr;
+    return p ? &var(o, *p->pkg, p->ref)[0] : nullptr;
+}
+
+void Vm::instantiate(Obj* o) {
+    if (o->cls || !o->pkg) return;
+    const Export& e = o->pkg->exports[size_t(o->ref - 1)];
+    o->cls = object(*o->pkg, e.class_ref);
+    if (!o->cls) throw std::runtime_error("cannot instantiate a class object");
+    o->vars = defaults(o->cls)->vars;
+    size_t end = 0;
+    apply_props(o->cls, *o->pkg, read_properties(*o->pkg, e, &end), o);
+}
+
 void Vm::apply_defaults(Obj* cls, Obj* d) {
     const Package& p = *cls->pkg;
-    for (const Property& tag : read_class(p, p.exports[size_t(cls->ref - 1)]).defaults) {
-        Obj* prop = nullptr;
-        for (Obj* c = cls; c && !prop; c = super_of(c))
-            for (size_t i = 0; i < c->pkg->exports.size() && !prop; i++) {
-                const Export& e = c->pkg->exports[i];
-                if (e.package == c->ref && iequal(e.name, tag.name) && is_property(*c->pkg, e))
-                    prop = object(*c->pkg, int32_t(i + 1));
-            }
+    apply_props(cls, p, read_class(p, p.exports[size_t(cls->ref - 1)]).defaults, d);
+}
+
+void Vm::apply_props(Obj* cls, const Package& p, const std::vector<Property>& tags, Obj* d) {
+    for (const Property& tag : tags) {
+        Obj* prop = find_prop(cls, tag.name);
         if (!prop) continue;  // shortcut: a default for a property we cannot find is dropped, as for removed vars
         const Local& l = decl(prop);
         std::vector<Value>& slots = var(d, *prop->pkg, prop->ref);
@@ -578,12 +622,16 @@ size_t find_label(const Function& code, const std::string& label) {
 
 }  // namespace
 
-void Vm::event(Obj* o, const std::string& name) {
+bool Vm::event(Obj* o, const std::string& name, std::vector<Value> args) {
+    // shortcut: Disable applies to every event name, not only probe functions; state probe masks not applied
+    if (std::find(o->disabled.begin(), o->disabled.end(), lower(name)) != o->disabled.end()) return false;
     const Function* f = find_virtual(o->cls, o->state, name);
-    if (!f || (f->flags & kFuncNative)) return;
-    std::vector<Value> none;
-    call(*f, o, none);
+    if (!f || (f->flags & kFuncNative)) return false;
+    call(*f, o, args);
+    return true;
 }
+
+void Vm::add_native(const std::string& name, Native fn) { by_name_[lower(name)] = std::move(fn); }
 
 bool Vm::goto_state(Obj* o, const std::string& name, const std::string& label) {
     bool leave = iequal(name, "None") || name.empty();
@@ -620,7 +668,7 @@ void Vm::tick(Obj* o, float dt) {
         o->sleep = -1;
     }
     const Function& code = state_code(o->code_state);
-    Frame fr{code, o, {}};
+    Frame fr(code, o);
     fr.pc = o->state_pc;
     int gen = o->state_gen;
     for (long steps = 0; fr.pc < code.code.size(); steps++) {
@@ -712,7 +760,7 @@ Value Vm::call(const Function& f, Obj* self, std::vector<Value>& args) {
         }
         ~Depth() { --d; }
     } guard(depth_);
-    Frame fr{f, self, {}};
+    Frame fr(f, self);
     size_t a = 0;
     for (const Local& l : f.locals) {
         fr.vars.emplace_back(size_t(l.dim), zero(*f.pkg, l));
@@ -795,6 +843,7 @@ Value Vm::call_native(Frame& fr, const Bound& b, Obj* self) {
     }
     if (!ended && fr.u8() != 0x16) throw std::runtime_error(fr.f.name + ": too many arguments to native " + d.name);
     if (!b.impl) throw std::runtime_error("native " + d.name + " (" + std::to_string(d.native) + ") not implemented");
+    if (d.flags & kFuncIterator) iterator_out_ = outs.empty() ? Ref{} : outs[0].second;
     (*b.impl)(self, ptrs, ret);
     for (auto& [v, place] : outs) write(place.v, place.comp, *v);
     return ret;
@@ -803,6 +852,11 @@ Value Vm::call_native(Frame& fr, const Bound& b, Obj* self) {
 std::string Vm::name_of(const Obj* o) const {
     if (!o) return "None";
     if (o->pkg) return o->pkg->exports[size_t(o->ref - 1)].name;
+    if (!o->cls) {
+        for (const auto& [n, slot] : intrinsic_)
+            if (slot.get() == o) return n.substr(n.find('.') + 1);
+        return "None";
+    }
     return o->cls->pkg->exports[size_t(o->cls->ref - 1)].name;  // shortcut: instances are not numbered yet
 }
 
@@ -874,6 +928,31 @@ Value Vm::eval(Frame& fr, Obj* ctx) {
             x.t = VT::Object;
             return x;
         }
+        case 0x2F: {  // ForEach: iterator native call, u16 offset of the loop's 0x30
+            iterator_items.clear();
+            iterator_out_ = {};
+            eval(fr, ctx);
+            uint16_t end = fr.u16();
+            fr.iters.push_back({std::move(iterator_items), 0, iterator_out_, fr.pc});
+            iterator_items.clear();
+            Frame::Iter& it = fr.iters.back();
+            if (it.items.empty()) fr.jump(end);
+            else write(it.out.v, it.out.comp, it.items[0]);
+            return Value();
+        }
+        case 0x31: {  // iterator next: back to the body while items remain
+            if (fr.iters.empty()) throw std::runtime_error(fr.f.name + ": iterator next outside ForEach");
+            Frame::Iter& it = fr.iters.back();
+            if (++it.next < it.items.size()) {
+                write(it.out.v, it.out.comp, it.items[it.next]);
+                fr.jump(it.body);
+            }
+            return Value();
+        }
+        case 0x30:  // iterator pop: leaving the loop (end, break or return)
+            if (fr.iters.empty()) throw std::runtime_error(fr.f.name + ": iterator pop outside ForEach");
+            fr.iters.pop_back();
+            return Value();
         case 0x16: return Value();
         case 0x17: { Value v = Value::of(VT::Object); v.o = fr.self; return v; }
         case 0x1B: case 0x38: {  // virtual call (the current state first), global call (class only)
@@ -926,6 +1005,7 @@ Value Vm::eval(Frame& fr, Obj* ctx) {
         case 0x36: {  // struct member of a value that is not assignable (e.g. a function result)
             std::string m = object_name(*fr.f.pkg, fr.i32());
             Value s = eval(fr, ctx);
+            if (s.t == VT::None) return Value();  // through a None context: zero
             int k = member_index(s, m);
             return s.t == VT::Struct ? s.fields[size_t(k)] : read(&s, k);
         }
@@ -936,6 +1016,10 @@ Value Vm::eval(Frame& fr, Obj* ctx) {
                 int index = t >= 0x70 ? t : (t - 0x60) * 256 + fr.u8();
                 auto it = by_index_.find(index);
                 if (it == by_index_.end()) throw std::runtime_error("native index " + std::to_string(index) + " not bound");
+                if (!it->second.impl) {  // natives may be added after bind_natives
+                    auto impl = by_name_.find(lower(it->second.decl->name));
+                    if (impl != by_name_.end()) it->second.impl = &impl->second;
+                }
                 return call_native(fr, it->second, ctx);
             }
             throw std::runtime_error(fr.f.name + ": bytecode token " + std::to_string(t) + " not supported yet");
@@ -1051,6 +1135,73 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
     NATIVE(Normal) {
         float n = std::sqrt(a[0]->v[0] * a[0]->v[0] + a[0]->v[1] * a[0]->v[1] + a[0]->v[2] * a[0]->v[2]);
         for (int k = 0; k < 3; k++) r.v[k] = n > 0 ? a[0]->v[k] / n : 0;
+    };
+    // Rotator: 65536 units per turn, components wrap like 32-bit ints.
+    NATIVE(Add_RotatorRotator) { for (int k = 0; k < 3; k++) r.r[k] = wrap(int64_t(a[0]->r[k]) + a[1]->r[k]); };
+    NATIVE(Subtract_RotatorRotator) { for (int k = 0; k < 3; k++) r.r[k] = wrap(int64_t(a[0]->r[k]) - a[1]->r[k]); };
+    NATIVE(AddEqual_RotatorRotator) { for (int k = 0; k < 3; k++) r.r[k] = a[0]->r[k] = wrap(int64_t(a[0]->r[k]) + a[1]->r[k]); };
+    NATIVE(SubtractEqual_RotatorRotator) { for (int k = 0; k < 3; k++) r.r[k] = a[0]->r[k] = wrap(int64_t(a[0]->r[k]) - a[1]->r[k]); };
+    NATIVE(Multiply_RotatorFloat) { for (int k = 0; k < 3; k++) r.r[k] = to_int(float(a[0]->r[k]) * a[1]->f); };
+    NATIVE(Multiply_FloatRotator) { for (int k = 0; k < 3; k++) r.r[k] = to_int(a[0]->f * float(a[1]->r[k])); };
+    NATIVE(Divide_RotatorFloat) { for (int k = 0; k < 3; k++) r.r[k] = a[1]->f != 0 ? to_int(float(a[0]->r[k]) / a[1]->f) : 0; };
+    NATIVE(MultiplyEqual_RotatorFloat) { for (int k = 0; k < 3; k++) r.r[k] = a[0]->r[k] = to_int(float(a[0]->r[k]) * a[1]->f); };
+    NATIVE(DivideEqual_RotatorFloat) { for (int k = 0; k < 3; k++) r.r[k] = a[0]->r[k] = a[1]->f != 0 ? to_int(float(a[0]->r[k]) / a[1]->f) : 0; };
+    // Axes of a rotation (public UE1 rotation matrix, unverified): X forward, Y right, Z up.
+    auto axes = [](const Value& rot, float x[3], float y[3], float z[3]) {
+        float sp = std::sin(float(rot.r[0]) * kRotToRad), cp = std::cos(float(rot.r[0]) * kRotToRad);
+        float sy = std::sin(float(rot.r[1]) * kRotToRad), cy = std::cos(float(rot.r[1]) * kRotToRad);
+        float sr = std::sin(float(rot.r[2]) * kRotToRad), cr = std::cos(float(rot.r[2]) * kRotToRad);
+        x[0] = cp * cy, x[1] = cp * sy, x[2] = sp;
+        y[0] = sr * sp * cy - cr * sy, y[1] = sr * sp * sy + cr * cy, y[2] = -sr * cp;
+        z[0] = -(cr * sp * cy + sr * sy), z[1] = cy * sr - cr * sp * sy, z[2] = cr * cp;
+    };
+    by_name_["greatergreater_vectorrotator"] = [axes](Obj*, std::vector<Value*>& a, Value& r) {  // local -> world
+        float x[3], y[3], z[3];
+        axes(*a[1], x, y, z);
+        for (int k = 0; k < 3; k++) r.v[k] = a[0]->v[0] * x[k] + a[0]->v[1] * y[k] + a[0]->v[2] * z[k];
+    };
+    by_name_["lessless_vectorrotator"] = [axes](Obj*, std::vector<Value*>& a, Value& r) {  // world -> local
+        float x[3], y[3], z[3];
+        axes(*a[1], x, y, z);
+        const float* v = a[0]->v;
+        r.v[0] = v[0] * x[0] + v[1] * x[1] + v[2] * x[2];
+        r.v[1] = v[0] * y[0] + v[1] * y[1] + v[2] * y[2];
+        r.v[2] = v[0] * z[0] + v[1] * z[1] + v[2] * z[2];
+    };
+    by_name_["getaxes"] = [axes](Obj*, std::vector<Value*>& a, Value&) { axes(*a[0], a[1]->v, a[2]->v, a[3]->v); };
+    by_name_["getunaxes"] = [axes](Obj*, std::vector<Value*>& a, Value&) {
+        float x[3], y[3], z[3];
+        axes(*a[0], x, y, z);
+        for (int k = 0; k < 3; k++) a[1]->v[k] = k == 0 ? x[0] : k == 1 ? y[0] : z[0];  // transposed axes
+        for (int k = 0; k < 3; k++) a[2]->v[k] = k == 0 ? x[1] : k == 1 ? y[1] : z[1];
+        for (int k = 0; k < 3; k++) a[3]->v[k] = k == 0 ? x[2] : k == 1 ? y[2] : z[2];
+    };
+    // DynamicLoadObject(string ObjectName "Package.[Group.]Name", class ObjectClass, optional bool MayFail)
+    by_name_["dynamicloadobject"] = [this](Obj*, std::vector<Value*>& a, Value& r) {
+        const std::string& path = a[0]->s;
+        size_t dot = path.find('.'), last = path.rfind('.');
+        const Package* p = dot == std::string::npos || !packages_ ? nullptr : packages_->get(path.substr(0, dot));
+        for (size_t i = 0; p && i < p->exports.size() && !r.o; i++) {
+            const Export& e = p->exports[i];
+            if (!e.size || !iequal(e.name, path.substr(last + 1))) continue;
+            std::string full = e.name;  // shortcut: matches the full group path, not partial paths
+            for (int32_t o = e.package, g = 0; o > 0 && g < 64; o = p->exports[size_t(o - 1)].package, g++)
+                full = p->exports[size_t(o - 1)].name + "." + full;
+            if (!iequal(path.substr(0, dot) + "." + full, path)) continue;
+            Obj* found = object(*p, int32_t(i + 1));
+            Obj* cls = e.class_ref ? object(*p, e.class_ref) : nullptr;  // class objects: class 'Class'
+            if (!a[1]->o || (e.class_ref ? is_a(cls, a[1]->o) : name_of(a[1]->o) == "Class")) r.o = found;
+        }
+        if (!r.o && !(a[2] && a[2]->i)) log.push_back("ScriptWarning: DynamicLoadObject failed: " + path);
+    };
+    by_name_["enable"] = [](Obj* self, std::vector<Value*>& a, Value&) {
+        if (!self) return;
+        auto& d = self->disabled;
+        d.erase(std::remove(d.begin(), d.end(), lower(a[0]->s)), d.end());
+    };
+    by_name_["disable"] = [](Obj* self, std::vector<Value*>& a, Value&) {
+        if (self && std::find(self->disabled.begin(), self->disabled.end(), lower(a[0]->s)) == self->disabled.end())
+            self->disabled.push_back(lower(a[0]->s));
     };
     NATIVE(EqualEqual_RotatorRotator) { r.i = equal(*a[0], *a[1]); };
     NATIVE(NotEqual_RotatorRotator) { r.i = !equal(*a[0], *a[1]); };

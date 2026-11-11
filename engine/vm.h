@@ -45,6 +45,7 @@ struct Obj {
     bool code_active = false;
     float sleep = -1;    // latent Sleep: seconds left; < 0 = not sleeping
     int state_gen = 0;   // bumped by every GotoState, so running code notices a state change
+    std::vector<std::string> disabled;  // probe events turned off with Disable (lower case)
 };
 
 enum : uint32_t { kParm = 0x80, kOptionalParm = 0x10, kOutParm = 0x100, kSkipParm = 0x200, kReturnParm = 0x400 };
@@ -75,7 +76,7 @@ struct Function {
 
 Function load_function(const Package& p, int32_t ref);  // ref: export of class Function
 Function load_state(const Package& p, int32_t ref);     // ref: export of class State; locals stay empty
-enum : uint32_t { kFuncLatent = 0x8, kStateAuto = 0x2 };
+enum : uint32_t { kFuncIterator = 0x4, kFuncLatent = 0x8, kStateAuto = 0x2 };
 
 class Vm {
 public:
@@ -95,6 +96,15 @@ public:
     // leaves every state, "Auto" picks the class's auto state. Returns false (and logs) if the state is unknown.
     bool goto_state(Obj* o, const std::string& state, const std::string& label = "Begin");
     void tick(Obj* o, float dt);  // runs state code until it stops, sleeps or changes state
+    // Calls the script function name on o (through its state) if it exists; returns whether it did.
+    bool event(Obj* o, const std::string& name, std::vector<Value> args = {});
+    Value* prop(Obj* o, const std::string& name);  // first element of a variable by name; nullptr if none
+    void instantiate(Obj* o);  // package object (e.g. a map actor) -> live instance: class defaults + its properties
+    void add_native(const std::string& name, Native fn);  // by declared name; replaces a built-in one
+    bool is_a(Obj* cls, const Obj* base);  // cls is base or a subclass (or a state inside it)
+    std::string name_of(const Obj* o) const;
+    // Iterator natives (ForEach) put the values to visit here; the VM loops over them.
+    std::vector<Value> iterator_items;
     std::vector<std::string> log;  // Log() output and warnings, "Tag: text"
 
 private:
@@ -113,14 +123,13 @@ private:
     std::vector<Value>& var(Obj* o, const Package& p, int32_t prop_ref);
     Value context(Frame& fr, Obj* ctx, bool cls, Ref* place);
     Value call_native(Frame& fr, const Bound& b, Obj* self);
-    std::string name_of(const Obj* o) const;
-    bool is_a(Obj* cls, const Obj* base);
     Value call_script(Frame& fr, Obj* target, const Function& f);
     Value call_named(Frame& fr, Obj* target, const Function& f);
     const Function* find_virtual(Obj* cls, Obj* state, const std::string& name);  // state first, unless nullptr
     Obj* find_state(Obj* cls, const std::string& name, bool autostate);
     const Function& state_code(Obj* st);
-    void event(Obj* o, const std::string& name);  // calls a parameterless script function if it exists
+    Obj* find_prop(Obj* cls, const std::string& name);
+    void apply_props(Obj* cls, const Package& p, const std::vector<Property>& tags, Obj* target);
     const Local& decl(Obj* prop);
     Value zero(const Package& p, const Local& l);
     void apply_defaults(Obj* cls, Obj* d);
@@ -134,6 +143,9 @@ private:
     std::vector<std::unique_ptr<Obj>> instances_;
     std::map<const Obj*, Local> decls_;
     std::map<const Obj*, Obj*> supers_;
+    std::map<std::pair<const Obj*, std::string>, Obj*> props_;
+    std::map<std::string, std::unique_ptr<Obj>> intrinsic_;  // classes with no export (Core.Class, Engine.Sound...)
+    Ref iterator_out_;  // out parameter of the last iterator native called
     std::map<const Obj*, std::vector<std::string>> struct_names_;
     std::map<std::tuple<const Obj*, const Obj*, std::string>, const Function*> virtuals_;
     int depth_ = 0;

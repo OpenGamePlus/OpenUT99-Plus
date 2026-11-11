@@ -89,14 +89,22 @@ Engine: `engine/vm.*` ([ADR 0006](../architecture/adr/0006-unrealscript-executio
 | States: a State's `super` is its parent state (`extends`, or the same-named state of the super class); flag `0x2` marks `auto state`. Calls (`0x1B`) look in the current state and its parents first, then the class chain; `0x38` (global) skips the state | retail `TestInfo` states (`CCAA extends AA` → super `AA`); source of `Fan2`, `Chest` (`auto state`) |
 | Label table entries: name (u32 in memory) + code offset u32, ended by a name whose text is `None` (packages hold several `None` names) | all 996 retail states: every table offset follows a `0x0C` |
 | Function flag `0x8` = latent (`Sleep`, `FinishAnim`, `MoveTo`...): state code stops at the call and continues after it on a later tick | Engine native declarations |
+| `ForEach` `0x2F`: iterator native call (flag `0x4`, e.g. `AllActors` 0x405), u16 offset of the loop's `0x30` pop. `0x31` returns to the body while items remain, else falls through; `continue` is `0x31` + a jump to the `0x30` | retail `TestInfo.TestContinueForEach` bytes; its log matches its source |
+| Classes defined only in C++ (`Core.Class`, `Engine.Sound`) are imported but have no export anywhere | map sweep: 292 such references |
 | `GotoState`: `EndState` in the old state, `BeginState` in the new one, code from the label (default `Begin`) of the state or its nearest parent state with labels; `'Auto'` picks the auto state | public documentation; order **unverified** |
 | Conversions `0x39`–`0x59` (e.g. `0x53` int → string, `0x55` float → string) | public UE1 documentation; `0x55` with 6 decimals and the others' text formats are **unverified** |
 
 Retail checks (`build/ut_script <UT99_DIR> Package.Class.Function [args]`): `Engine.Console.FormatFloat 1.2345` → `"1.23"`, `Botpack.TournamentScoreBoard.TwoDigitString 5` → `"05"`, and `Engine.TestInfo` `TestContinueWhile`, `TestContinueDoUntil`, `TestContinueFor`, `TestSwitch`, `TestOptionalOut` run to the end with every `assert` passing and the log their source text predicts; so do `TestStatic`, `TestQ`, `TestStructBools`, `TestX`, `TestNullContext`, `TestLimitor` and `PostBeginPlay`. `TestInfo.Tick` runs until `GetPropertyText` (not implemented).
 
-State sweep (`ut_script <UT99_DIR> --states`): all 1,604 classes spawn and enter their auto state when they have one (233); the 346 that stop do so only on engine natives not written yet: `SetCollision` 137, `SetPhysics` 113, `FinishAnim` 26, `PlayAnim` 16, `SetTimer` 15, `LoopAnim` 13, `RotRand` 10, `PlaySound` 8, a few others once.
+State sweep (`ut_script <UT99_DIR> --states`): all 1,604 classes spawn; 453 enter an auto state; 67 stop, on AI movement natives not written yet (`WaitForLanding`, `MoveTo`, `LineOfSightTo`...).
 
-Not yet: iterators, `new`, dynamic arrays, binary struct defaults (other than Vector / Rotator), state `ignores`, engine natives (actors, spawning, timers).
+## World (map play)
+
+Engine: `engine/world.*`. A map's actors become instances (class defaults, then the actor's own tagged properties); `Level` points at the first actor, the LevelInfo. The game class (`LevelInfo.DefaultGameType`, else `[Engine.Engine] DefaultGame`) is spawned as `Level.Game` and gets `InitGame`; what it spawns gets its play events at once, then every map actor gets `PreBeginPlay`, `BeginPlay`, `PostBeginPlay`, `SetInitialState`, phase by phase. Each tick: `Level.TimeSeconds`, `Tick`, timers, state code. This order is **unverified**; the evidence is only that the retail scripts then run cleanly (e.g. `DMMutator` needs its `PostBeginPlay` before the map's actors call `CheckReplacement`).
+
+Map sweep (`ut_script <UT99_DIR> --maps 5`): all 83 maps load, start `DeathMatchPlus` and run 5 s with no script error; 78,560 actors alive at the end. Actor natives are mostly placeholders (see [debt.md](../roadmap/debt.md)): no physics, collision, traces, animation timing or sound.
+
+Not yet: `new`, dynamic arrays, binary struct defaults (other than Vector / Rotator), state `ignores`, engine natives (actors, spawning, timers).
 
 ## Numbers (retail `System/*.u`)
 
