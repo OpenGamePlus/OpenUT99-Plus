@@ -11,6 +11,7 @@ You need your own copy of Unreal Tournament (tested with the Steam release, OldU
 ```
 python3 -m unittest discover -s tools      # tests
 python3 tools/check_docs.py                # doc checks
+cmake -S . -B build && cmake --build build && ctest --test-dir build
 python3 tools/upkg.py <UT99_DIR>/Maps/DM-Deck16][.unr
 ```
 

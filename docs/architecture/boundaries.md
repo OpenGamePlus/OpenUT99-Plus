@@ -15,7 +15,9 @@
 | `tools/umesh.py` | Mesh, LodMesh, SkeletalMesh, Animation, OBJ export | `upkg`, `uobjects` |
 | `tools/check_docs.py` | documentation checker | std only |
 
-The engine (`engine/`, C++) does not exist yet; its modules get rows here as they are added.
+| `engine/upkg.*` (library `ut`) | packages, compact index, strings, lazy arrays, tagged properties (port of `upkg.py` + `uprops.py`) | std only |
+| `engine/ut_dump.cpp` | executable: package summary, property counts per export | `upkg` |
+| `tools/compare_engine.py` | runs `ut_dump` against the Python readers on an install | `upkg`, `uprops` (Python) |
 
 ## Rules
 

@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — C++ engine started
+
+- `CMakeLists.txt`, `engine/upkg.*`: package and tagged-property reader in C++17, built with `-Wall -Wextra -Wconversion`, no warnings; unit tests reuse the Python synthetic inputs.
+- `tools/compare_engine.py` runs `ut_dump` against the Python readers: 0 differences on all 396 packages. The C++ loader also rejects exports outside the file (the Python one does not).
+
 ## 2026-11-10 — UnrealScript execution proposal
 
 - ADR 0006 (Proposed): run the bytecode in a VM. Gameplay and UI packages have zero native functions (≈ 7,300 functions, 1.3 MB of bytecode); the 383 natives live in Core, Engine and the network / web / demo packages. Native reimplementation was weighed and rejected in the proposal (ADR 0004 forbids line-by-line translation; networking and mods need the original logic). The maintainer decides.

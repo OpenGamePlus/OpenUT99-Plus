@@ -1,6 +1,6 @@
 # SYSTEM_SUMMARY
 
-Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: every export byte-exact. Next: B (C++ engine, level viewer).
+Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: every export byte-exact. B (C++ engine) started: package + property reader ported and cross-checked.
 
 ## Tree
 
@@ -8,6 +8,11 @@ Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: ev
 AGENTS.md            agent entry point
 LICENSE              AGPL-3.0
 README.md
+CMakeLists.txt       C++17 engine build (library ut, ut_dump, test_engine)
+engine/
+  upkg.{h,cpp}       packages + tagged properties (port of tools/upkg.py, uprops.py)
+  ut_dump.cpp        summary / property counts, for compare_engine.py
+  test_engine.cpp    unit tests on synthetic data (ctest)
 docs/                specs, ADRs, roadmap, AI layer (index: docs/README.md)
 tools/
   upkg.py            Unreal package reader (header, names, imports, exports)
@@ -19,6 +24,7 @@ tools/
   umodel.py          Polys, Model (BSP, surfaces, lightmaps, zones), Level
   umesh.py           Mesh, LodMesh, SkeletalMesh, Animation (OBJ export)
   uobjects.py        dispatcher + sweep over all exports (exact / leftover / error / noreader)
+  compare_engine.py  C++ vs Python on every package of an install
   check_docs.py      documentation checker
   test_*.py          unit tests on synthetic data
 ```
@@ -36,13 +42,15 @@ tools/
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
-| Engine (C++) | not started |
+| Engine (C++) | package + property reader; 0 differences vs Python on all 396 packages |
 | Network | not started |
 
 ## Commands
 
 ```
 python3 -m unittest discover -s tools          # all tests
+cmake -S . -B build && cmake --build build && ctest --test-dir build   # engine build + tests
+python3 tools/compare_engine.py <UT99_DIR> build/ut_dump      # C++ vs Python, must say "0 differ"
 python3 tools/check_docs.py                    # doc checks
 python3 tools/upkg.py FILE [--names|--imports|--exports]
 python3 tools/uprops.py FILE OBJECT              # properties of one export
@@ -67,3 +75,4 @@ python3 tools/umesh.py FILE LODMESH --obj out/x.obj [FRAME]
 - `uscript.decode_script(pkg, data, pos, mem_size) -> (end, Counter of tokens)`; readers for `Class` (with `defaults`), `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, every `*Property` (`refs` = type references).
 - `umodel.read_model(...)` → `vectors`, `points`, `nodes`, `surfs`, `verts`, `zones`, `lightmaps`, `light_bits`, `lights`, ... (names as in `docs/formats/level.md`); `umodel.read_level(...)` → `actors`, `url`, `model`, `reach_specs`, ...; `umodel.read_polys(...)` → list of polygons.
 - `umesh.read_mesh / read_lod_mesh / read_skeletal_mesh / read_animation`; `umesh.unpack_vert(u32) -> (x, y, z)`; `umesh.lod_mesh_obj(mesh, frame) -> str`.
+- C++ `ut::load_package(path) -> Package` (`names`, `imports`, `exports`, `data`), `ut::read_properties(pkg, export, &end) -> vector<Property>` (raw `value_pos`/`size`; decode with `prop_int`, `prop_float`, `prop_ref`, `prop_byte`, `prop_string`, `prop_vector`). Throws `std::runtime_error` on bad data; exports outside the file are rejected at load.

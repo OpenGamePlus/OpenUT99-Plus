@@ -9,7 +9,7 @@ import os
 import re
 import sys
 
-SKIP_DIRS = {".git", "__pycache__", "out", "build", "superpowers"}  # superpowers: local plans
+SKIP_DIRS = {".git", "__pycache__", "out", "build", "superpowers", ".superpowers"}  # local plans and their workspace
 SELF_TESTS = {"test_check_docs.py"}  # holds fake personal data on purpose
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 TICK = re.compile(r"`([^`\s]+)`")

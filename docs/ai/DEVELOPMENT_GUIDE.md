@@ -7,11 +7,12 @@
 3. Verify locally against every matching object in `<UT99_DIR>`; record the counts in the spec.
 4. Write `docs/formats/<format>.md`; mark anything not verified; update [coverage.md](../formats/coverage.md).
 5. Update SYSTEM_SUMMARY and add a PROJECT_MEMORY stage.
-6. C++ port (when the engine needs it): module in `engine/`, tests, row in boundaries.
+6. C++ port (when the engine needs it): module in `engine/`, tests in `engine/test_engine.cpp` on the same synthetic data as the Python test, a comparison against the Python reader on every retail package, row in boundaries.
 
 ## Quality bar
 
-- Tests and doc checks from the [SYSTEM_SUMMARY commands](SYSTEM_SUMMARY.md#commands) pass.
+- Tests, engine build without warnings, engine tests and doc checks from the [SYSTEM_SUMMARY commands](SYSTEM_SUMMARY.md#commands) pass.
+- An engine reader change: `compare_engine.py` still reports 0 differences.
 - A reader change still parses every retail package: `python3 tools/uprops.py --sweep <UT99_DIR>` reports the same counts as the specs, "classes with both: none"; `python3 tools/uobjects.py --sweep <UT99_DIR>` shows no `leftover` or `error` for a class marked exact in coverage.
 
 ## Commits
