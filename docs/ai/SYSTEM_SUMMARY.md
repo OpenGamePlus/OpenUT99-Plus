@@ -1,6 +1,6 @@
 # SYSTEM_SUMMARY
 
-Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: every export byte-exact. B (C++ engine) started: package + property reader ported and cross-checked.
+Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: every export byte-exact. B (C++ engine) in progress: textured BSP level viewer, all retail maps load.
 
 ## Tree
 
@@ -13,6 +13,13 @@ engine/
   upkg.{h,cpp}       packages + tagged properties (port of tools/upkg.py, uprops.py)
   config.{h,cpp}     .ini parsing
   vfs.{h,cpp}        package lookup (Paths, cache)
+  packages.{h,cpp}   loaded packages, cross-package references
+  texture.{h,cpp}    Palette + P8 Texture -> RGBA
+  level.{h,cpp}      Model (BSP), Level, surface triangles
+  scene.{h,cpp}      map -> texture batches, player starts
+  render.{h,cpp}     OpenGL 3.3 renderer (library ut_render)
+  png.{h,cpp}        PNG encoder for screenshots
+  mapview.cpp        ut_mapview: free-fly viewer, --shot, --check
   ut_dump.cpp        summary / property counts / --deps
   test_engine.cpp    unit tests on synthetic data (ctest)
 docs/                specs, ADRs, roadmap, AI layer (index: docs/README.md)
@@ -45,7 +52,7 @@ tools/
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
-| Engine (C++) | package + property reader (0 differences vs Python on all 396 packages); ini + package lookup (0 missing dependencies) |
+| Engine (C++) | package + property + Model reader (0 differences vs Python on all 396 packages); ini + package lookup (0 missing dependencies); level viewer: textured BSP, all 83 maps load, full bright (no lightmaps yet) |
 | Network | not started |
 
 ## Commands
@@ -55,6 +62,8 @@ python3 -m unittest discover -s tools          # all tests
 cmake -S . -B build && cmake --build build && ctest --test-dir build   # engine build + tests
 python3 tools/compare_engine.py <UT99_DIR> build/ut_dump      # C++ vs Python, must say "0 differ"
 build/ut_dump --deps <UT99_DIR>                 # must say "0 missing dependencies" (same as uini.py --deps)
+build/ut_mapview <UT99_DIR> --check             # every map loads: "83 maps, 0 errors"
+build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch]   # RMB + mouse look, WASD fly
 python3 tools/check_docs.py                    # doc checks
 python3 tools/upkg.py FILE [--names|--imports|--exports]
 python3 tools/uprops.py FILE OBJECT              # properties of one export
@@ -81,3 +90,4 @@ python3 tools/umesh.py FILE LODMESH --obj out/x.obj [FRAME]
 - `umesh.read_mesh / read_lod_mesh / read_skeletal_mesh / read_animation`; `umesh.unpack_vert(u32) -> (x, y, z)`; `umesh.lod_mesh_obj(mesh, frame) -> str`.
 - C++ `ut::load_package(path) -> Package` (`names`, `imports`, `exports`, `data`), `ut::read_properties(pkg, export, &end) -> vector<Property>` (raw `value_pos`/`size`; decode with `prop_int`, `prop_float`, `prop_ref`, `prop_byte`, `prop_string`, `prop_vector`). Throws `std::runtime_error` on bad data; exports outside the file are rejected at load.
 - `uini.parse(text) -> {section: {key: [values]}}`, `uini.package_paths(root, ini) -> {lower name: path}`; C++ `ut::parse_ini`, `ut::read_ini`, `ut::Vfs(root, ini).find(name)`.
+- C++ `ut::PackageSet(&vfs).resolve(pkg, ref) -> Object{package, exp}` (imports by name + class + group path); `ut::load_scene(set, map) -> Scene{batches, starts}`; `ut::Renderer(scene).draw(cam, w, h)`.

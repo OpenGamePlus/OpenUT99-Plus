@@ -10,6 +10,10 @@
 #include <fstream>
 
 #include "config.h"
+#include "level.h"
+#include "packages.h"
+#include "png.h"
+#include "texture.h"
 #include "upkg.h"
 #include "vfs.h"
 
@@ -176,7 +180,88 @@ static void test_vfs() {
     fs::remove_all(root);
 }
 
+// A package with a 2-colour palette and a 2x1 P8 texture referencing it (same layout as tools/test_utex.py).
+static void test_texture_rgba() {
+    Package p;
+    p.version = 69;
+    p.names = {"None", "Palette"};
+    Bytes d;
+    // export 1: Palette — properties: None; data: count 2, colours
+    size_t pal_off = d.size();
+    put(d, cindex(0)); put(d, cindex(2));
+    d.insert(d.end(), {10, 20, 30, 0, 40, 50, 60, 0});
+    size_t pal_size = d.size() - pal_off;
+    // export 2: Texture — properties: Palette=export 1; one mip 2x1
+    size_t tex_off = d.size();
+    put(d, cindex(1)); d.push_back(0x05); put(d, cindex(1)); put(d, cindex(0));
+    put(d, cindex(1));                                   // mip count
+    size_t skip_at = d.size();
+    put(d, uint32_t(0)); put(d, cindex(2)); d.push_back(0); d.push_back(1);
+    uint32_t skip = uint32_t(d.size());
+    std::memcpy(&d[skip_at], &skip, 4);
+    put(d, uint32_t(2)); put(d, uint32_t(1)); d.push_back(1); d.push_back(0);
+    size_t tex_size = d.size() - tex_off;
+    p.data = d;
+    p.exports.push_back(Export{-1, 0, 0, "Pal", 0, int32_t(pal_size), int32_t(pal_off)});
+    p.exports.push_back(Export{-2, 0, 0, "Tex", 0, int32_t(tex_size), int32_t(tex_off)});
+    p.imports.push_back(Import{"Core", "Class", 0, "Palette"});
+    p.imports.push_back(Import{"Core", "Class", 0, "Texture"});
+    Image img = texture_rgba(p, p.exports[1], false);
+    assert(img.width == 2 && img.height == 1);
+    assert(img.rgba == (std::vector<uint8_t>{10, 20, 30, 255, 40, 50, 60, 255}));
+    Image masked = texture_rgba(p, p.exports[1], true);
+    assert(masked.rgba[3] == 0 && masked.rgba[7] == 255);  // index 0 transparent
+}
+
+// One square surface (4 points), texture axes 1 texel per unit, pan 0: fan into 2 triangles with UVs in texels / size.
+static void test_surface_triangles() {
+    Model m;
+    m.points = {{0, 0, 0}, {64, 0, 0}, {64, 64, 0}, {0, 64, 0}};
+    m.vectors = {{0, 0, 1}, {1, 0, 0}, {0, 1, 0}};
+    m.verts = {{0, 0}, {1, 0}, {2, 0}, {3, 0}};
+    Surf s{};
+    s.base = 0, s.normal = 0, s.texture_u = 1, s.texture_v = 2, s.pan_u = 32;
+    m.surfs = {s};
+    Node n{};
+    n.vert_pool = 0, n.surf = 0, n.num_vertices = 4;
+    m.nodes = {n};
+    std::vector<Vertex> tris = node_triangles(m, m.nodes[0], 64, 64);
+    assert(tris.size() == 6);
+    assert(tris[1].x == 64 && tris[1].u == 1.5f && tris[1].v == 0);  // (64 + pan 32) / 64
+    assert(tris[2].v == 1.f);
+}
+
+// "Map" imports Tex (class Texture) from group Walls of package "Pack"; Pack exports group Walls and Tex inside it,
+// plus a decoy Tex in another group.
+static void test_resolve_import() {
+    Package pack;
+    pack.names = {"None", "Walls", "Tex", "Floors"};
+    pack.imports = {{"Core", "Class", 0, "Texture"}, {"Core", "Class", 0, "Package"}};
+    pack.exports = {{-2, 0, 0, "Floors", 0, 0, 0}, {-1, 0, 1, "Tex", 0, 0, 0},
+                    {-2, 0, 0, "Walls", 0, 0, 0}, {-1, 0, 3, "Tex", 0, 0, 0}};
+    Package map;
+    map.imports = {{"Core", "Package", 0, "Pack"}, {"Core", "Package", -1, "Walls"}, {"Engine", "Texture", -2, "Tex"}};
+    PackageSet set(nullptr);
+    set.add("Pack", std::move(pack));
+    Object o = set.resolve(map, -3);
+    assert(o.package && o.exp && o.exp->name == "Tex" && o.exp->package == 3);  // the one inside Walls
+    assert(!set.resolve(map, -1).exp);  // a package import is not an object export
+}
+
+static void test_png() {
+    std::vector<uint8_t> rgba = {255, 0, 0, 255};
+    std::vector<uint8_t> png = encode_png(1, 1, rgba);
+    assert(png.size() > 8 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G');
+    // IEND chunk: length 0, "IEND", CRC 0xAE426082
+    const uint8_t iend[] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82};
+    assert(std::memcmp(&png[png.size() - 12], iend, 12) == 0);
+}
+
 int main() {
+    test_resolve_import();
+    test_png();
+    test_texture_rgba();
+    test_surface_triangles();
     test_ini();
     test_vfs();
     test_compact_index();

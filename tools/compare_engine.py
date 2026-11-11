@@ -8,7 +8,9 @@ import os
 import subprocess
 import sys
 
-from upkg import parse
+import umodel
+from uobjects import read_object
+from upkg import object_name, parse
 from uprops import EXTENSIONS, read_properties
 
 
@@ -24,6 +26,19 @@ def python_lines(data):
     return summary, props
 
 
+def model_lines(data):
+    pkg = parse(data)
+    out = []
+    for i, e in enumerate(pkg["exports"]):
+        if e["size"] and e["class"] and object_name(pkg, e["class"]) == "Model":
+            m = read_object(pkg, data, e)
+            v = m["value"]
+            out.append(" ".join(str(x) for x in (i, len(v["nodes"]), len(v["surfs"]), len(v["verts"]), len(v["points"]),
+                                                 len(v["vectors"]), len(v["lightmaps"]), len(v["light_bits"]),
+                                                 len(v["lights"]), m["end"])))
+    return out
+
+
 def main(root, exe):
     files = differ = 0
     for ext in EXTENSIONS:
@@ -33,6 +48,12 @@ def main(root, exe):
                 summary, props = python_lines(f.read())
             cpp_summary = subprocess.run([exe, path], capture_output=True, text=True).stdout.strip()
             cpp_props = subprocess.run([exe, path, "--props"], capture_output=True, text=True).stdout.split("\n")[:-1]
+            if ext == "unr":
+                with open(path, "rb") as f:
+                    models = model_lines(f.read())
+                cpp_models = subprocess.run([exe, path, "--model"], capture_output=True, text=True).stdout.split("\n")[:-1]
+                props += models
+                cpp_props += cpp_models
             if cpp_summary != summary or cpp_props != props:
                 differ += 1
                 print(f"DIFF {os.path.basename(path)}")

@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — first level viewer
+
+- `ut_mapview`: C++ Model reader (0 differences vs Python on all maps), cross-package texture resolution, P8 textures, BSP surfaces batched per texture, OpenGL 3.3. All 83 maps load; the only untextured surfaces (88) have texture `None` in the data. Shots of Deck16][, Face and Morpheus look right, text unmirrored.
+- Level models carry vert entries beyond the points array; no node uses them, so validation checks only node-referenced verts.
+- Not yet: lightmaps (full bright), sky, actors, back-face culling, DXT / 469 compressed textures (checker).
+
 ## 2026-11-10 — configuration and package lookup
 
 - `tools/uini.py` and `engine/config.*` / `engine/vfs.*`: `.ini` sections with repeated keys; packages found through `[Core.System] Paths`, then the download cache (`cache.ini` maps GUID file names to package names). Every top-level import of every retail package resolves, in Python and C++.

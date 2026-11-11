@@ -10,8 +10,18 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wconversion)
 endif()
 
-add_library(ut STATIC engine/upkg.cpp engine/config.cpp engine/vfs.cpp)
+add_library(ut STATIC engine/upkg.cpp engine/config.cpp engine/vfs.cpp engine/texture.cpp engine/level.cpp engine/packages.cpp engine/png.cpp engine/scene.cpp)
 target_include_directories(ut PUBLIC engine)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+pkg_check_modules(EPOXY REQUIRED IMPORTED_TARGET epoxy)
+
+add_library(ut_render STATIC engine/render.cpp)
+target_link_libraries(ut_render PUBLIC ut PRIVATE PkgConfig::EPOXY)
+
+add_executable(ut_mapview engine/mapview.cpp)
+target_link_libraries(ut_mapview PRIVATE ut_render PkgConfig::SDL2)
 
 add_executable(ut_dump engine/ut_dump.cpp)
 target_link_libraries(ut_dump PRIVATE ut)

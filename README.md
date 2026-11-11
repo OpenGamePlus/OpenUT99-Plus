@@ -2,7 +2,7 @@
 
 Clean-room reimplementation of the Unreal Engine 1 runtime used by Unreal Tournament (1999), built to run the retail game content on modern systems.
 
-Status: research. Every object of the retail install is decoded byte-exactly by the Python readers (phase A); no engine yet. See [docs/README.md](docs/README.md).
+Status: research. Every object of the retail install is decoded byte-exactly by the Python readers (phase A). The C++ engine draws every retail map as textured BSP geometry, without lighting yet (phase B, early). See [docs/README.md](docs/README.md).
 
 You need your own copy of Unreal Tournament (tested with the Steam release, OldUnreal patch 469e). This project ships no game content.
 

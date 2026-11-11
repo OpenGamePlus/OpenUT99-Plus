@@ -19,12 +19,19 @@
 | `engine/upkg.*` (library `ut`) | packages, compact index, strings, lazy arrays, tagged properties (port of `upkg.py` + `uprops.py`) | std only |
 | `engine/config.*` | `.ini` parsing | std only |
 | `engine/vfs.*` | package name → file (Paths, cache) | `config` |
-| `engine/ut_dump.cpp` | executable: package summary, property counts, dependency check | `upkg`, `config`, `vfs` |
+| `engine/packages.*` | loaded packages, cross-package object references | `upkg`, `vfs` |
+| `engine/texture.*` | Palette + P8 Texture → RGBA | `upkg` |
+| `engine/level.*` | Model (BSP), Level, surface triangles | `upkg` |
+| `engine/png.*` | PNG encoder | std only |
+| `engine/scene.*` | map → texture batches + player starts (no GL) | `packages`, `level`, `texture` |
+| `engine/render.*` (library `ut_render`) | OpenGL 3.3 renderer, screenshots | `scene`, `png`, epoxy |
+| `engine/mapview.cpp` | executable `ut_mapview`: window, input, `--shot`, `--check` | `render`, `scene`, `vfs`, SDL2 |
+| `engine/ut_dump.cpp` | executable: package summary, property counts, model counts, dependency check | `upkg`, `level`, `config`, `vfs` |
 | `tools/compare_engine.py` | runs `ut_dump` against the Python readers on an install | `upkg`, `uprops` (Python) |
 
 ## Rules
 
 - Tools: Python stdlib only; a reader never writes into `<UT99_DIR>`.
 - Format readers depend only on lower-level readers (every package format sits on `upkg`); no cycles. A class-data reader registers itself with `uobjects.register(<class name>)` and never imports `uobjects` for anything else.
-- Engine (when it exists): format modules depend on std only or on other format modules; the game layer never calls OpenGL or SDL; only executables touch SDL.
+- Engine: format modules depend on std only or on other format modules; nothing below `render` calls OpenGL; only executables touch SDL.
 - No module embeds game data or paths to a real install ([ADR 0001](adr/0001-no-game-data.md)).

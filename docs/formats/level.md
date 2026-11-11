@@ -49,6 +49,10 @@ Surface: texture ref, poly flags u32, base (point idx), normal, texture U, textu
 
 Lightmap: data offset i32 (into light bits), pan vector, U clamp, V clamp (compact), U scale, V scale (f32), first light i32 (index into `lights`). Its data is, for each light in `lights[first light ..]` up to the 0 entry, a shadow bitmap of V clamp rows × ceil(U clamp / 8) bytes, one bit per luxel. The final light colour is computed at run time from the light actors' properties (brightness, hue, radius, effect): engine behaviour, not data.
 
+## Drawing a surface
+
+Texture coordinates of a point P on a node's polygon, in texels: U = (P − base) · texture U + pan U, V = (P − base) · texture V + pan V; divide by the texture's size for 0..1 coordinates. Verified visually on three maps (`ut_mapview --shot`): walls and floors line up, text on posters reads correctly (UE world is left-handed: X forward, Y right, Z up).
+
 ## Poly flags seen on surfaces (83 maps)
 
 Names from public UE1 documentation, unverified against behaviour.

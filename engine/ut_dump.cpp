@@ -1,5 +1,6 @@
 // ut_dump FILE            summary line, same text as tools/upkg.py
 // ut_dump FILE --props    per non-class export: "<index> <property count> <end offset>", compared by tools/compare_engine.py
+// ut_dump FILE --model    per Model export: "<index> nodes surfs verts points vectors lightmaps light_bits lights end"
 // ut_dump --deps DIR       resolve every top-level package import through the Vfs (same report as tools/uini.py --deps)
 #include <cstdio>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include <set>
 
 #include "config.h"
+#include "level.h"
 #include "upkg.h"
 #include "vfs.h"
 
@@ -33,8 +35,8 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    if (argc < 2 || (argc == 3 && std::strcmp(argv[2], "--props") != 0) || argc > 3) {
-        std::fprintf(stderr, "usage: ut_dump FILE [--props]\n");
+    if (argc < 2 || (argc == 3 && std::strcmp(argv[2], "--props") != 0 && std::strcmp(argv[2], "--model") != 0) || argc > 3) {
+        std::fprintf(stderr, "usage: ut_dump FILE [--props|--model] | ut_dump --deps DIR\n");
         return 2;
     }
     try {
@@ -42,6 +44,17 @@ int main(int argc, char** argv) {
         if (argc == 2) {
             std::printf("version %d licensee %d flags %#x names %zu imports %zu exports %zu\n", p.version, p.licensee,
                         p.flags, p.names.size(), p.imports.size(), p.exports.size());
+            return 0;
+        }
+        if (!std::strcmp(argv[2], "--model")) {
+            for (size_t i = 0; i < p.exports.size(); i++) {
+                const ut::Export& e = p.exports[i];
+                if (e.size == 0 || e.class_ref == 0 || ut::object_name(p, e.class_ref) != "Model") continue;
+                ut::Model m = ut::read_model(p, e);
+                std::printf("%zu %zu %zu %zu %zu %zu %zu %zu %zu %zu\n", i, m.nodes.size(), m.surfs.size(), m.verts.size(),
+                            m.points.size(), m.vectors.size(), m.lightmaps.size(), m.light_bits.size(), m.lights.size(),
+                            ut::model_end(p, e));
+            }
             return 0;
         }
         for (size_t i = 0; i < p.exports.size(); i++) {
