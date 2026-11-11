@@ -2,6 +2,10 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — UnrealScript execution proposal
+
+- ADR 0006 (Proposed): run the bytecode in a VM. Gameplay and UI packages have zero native functions (≈ 7,300 functions, 1.3 MB of bytecode); the 383 natives live in Core, Engine and the network / web / demo packages. Native reimplementation was weighed and rejected in the proposal (ADR 0004 forbids line-by-line translation; networking and mods need the original logic). The maintainer decides.
+
 ## 2026-11-10 — meshes; phase A exit check met
 
 - `tools/umesh.py`: Mesh, LodMesh, SkeletalMesh, Animation byte-exact; the sweep now reports all 276,885 retail exports exact, with no class left without a reader.
