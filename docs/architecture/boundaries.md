@@ -26,7 +26,8 @@
 | `engine/script.*` | bytecode walker, class objects (defaults) | `upkg` |
 | `engine/mesh.*` | LodMesh | `upkg` |
 | `engine/vm.*` | UnrealScript VM: functions in memory form, interpreter, natives by declared name | `upkg`, `script`, `packages` |
-| `engine/world.*` | map actors as VM instances, play start, ticking, timers, Actor natives | `vm`, `level`, `packages` |
+| `engine/collision.*` | BSP point solidity, swept boxes | `level` |
+| `engine/world.*` | map actors as VM instances, play start, ticking, timers, physics, Actor natives | `vm`, `level`, `collision`, `packages` |
 | `engine/lighting.*` | luxel positions, shadow bits, light colours, atlas packer | `level` |
 | `engine/scene.*` | map → texture batches, baked lightmap atlas, sky position, mesh actors (property lookup through class defaults), player starts (no GL) | `packages`, `level`, `texture`, `lighting`, `script`, `mesh` |
 | `engine/render.*` (library `ut_render`) | OpenGL 3.3 renderer, screenshots | `scene`, `png`, epoxy |

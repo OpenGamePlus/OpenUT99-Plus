@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "collision.h"
+#include "level.h"
 #include "packages.h"
 #include "vm.h"
 
@@ -27,10 +29,18 @@ public:
     Obj* game = nullptr;
     float time = 0;
     std::map<std::string, int> errors;  // script errors (without the function name) -> count; the world goes on
+    const Model* model() const { return has_model_ ? &model_ : nullptr; }
+    Obj* zone_at(Vec3 p);  // ZoneInfo of the BSP leaf holding p (the LevelInfo for zone 0)
 
 private:
     void guarded(Obj* o, const std::string& event, std::vector<Value> args = {});
     void destroy(Obj* o);
+    void physics(Obj* o, float dt);
+    Hit move(Obj* o, Vec3 delta);  // sweeps the actor's collision box (if it collides with the world)
+
+    const Package* map_ = nullptr;
+    Model model_;
+    bool has_model_ = false;
 
     Vm& vm_;
     PackageSet& packages_;

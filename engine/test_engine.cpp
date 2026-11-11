@@ -1,5 +1,6 @@
 // Engine unit tests on synthetic data (no game files). Same inputs as tools/test_*.py. Run via ctest.
 #include <cassert>
+#include <cmath>
 #include <type_traits>
 #include <cstdio>
 #include <cstdint>
@@ -11,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "collision.h"
 #include "config.h"
 #include "level.h"
 #include "mesh.h"
@@ -569,6 +571,33 @@ static void test_vm() {
     assert(throws([&] { vm2.call(vm2.function(p, 15), nullptr, none); }));
 }
 
+// Two-node BSP: floor z = 0 (solid below), its front holds a wall x = 100 facing -x (solid beyond).
+static void test_collision() {
+    Model m;
+    Node floor{}, wall{};
+    floor.plane[2] = 1, floor.back = -1, floor.front = 1;
+    wall.plane[0] = -1, wall.plane[3] = -100, wall.back = -1, wall.front = -1;
+    m.nodes = {floor, wall};
+    assert(!point_solid(m, {0, 0, 50}) && point_solid(m, {0, 0, -1}) && point_solid(m, {150, 0, 50}));
+    Hit h = trace(m, {0, 0, 100}, {0, 0, -100}, {0, 0, 0});
+    assert(h.hit && std::fabs(h.time - 0.5f) < 0.01f && h.normal.z == 1);
+    h = trace(m, {0, 0, 100}, {0, 0, -100}, {10, 10, 10});  // a box stops when its bottom reaches the floor
+    assert(h.hit && std::fabs(h.time - 0.45f) < 0.01f);
+    h = trace(m, {0, 0, 50}, {200, 0, 50}, {0, 0, 0});
+    assert(h.hit && std::fabs(h.time - 0.5f) < 0.01f && h.normal.x == -1);
+    assert(!trace(m, {0, 0, 50}, {90, 0, 60}, {0, 0, 0}).hit);
+    h = trace(m, {0, 0, -5}, {0, 0, 50}, {0, 0, 0});  // starts in the floor: may move out, not a hit
+    assert(h.start_solid && !h.hit);
+    h = trace(m, {0, 0, 5}, {0, 0, 50}, {10, 10, 10});  // box overlapping the floor moves up freely
+    assert(h.start_solid && !h.hit);
+    assert(trace(m, {0, 0, 5}, {0, 0, -50}, {10, 10, 10}).time < 0.05f);  // but cannot sink further
+    h = trace(m, {95, 0, 60}, {95, 0, 0}, {10, 10, 10});  // box overlapping the wall slides down along it to the floor
+    assert(h.hit && h.normal.z == 1 && std::fabs(h.time - 50.f / 60.f) < 0.01f);
+    floor.flags = 1;  // not CSG: crossing it keeps empty space
+    m.nodes[0] = floor;
+    assert(!point_solid(m, {0, 0, -1}));
+}
+
 static void test_unpack_vert() {
     uint32_t v = uint32_t(-1024 & 0x7FF) | uint32_t(1023 & 0x7FF) << 11 | uint32_t(-512 & 0x3FF) << 22;
     Vec3 p = unpack_vert(v);
@@ -576,6 +605,7 @@ static void test_unpack_vert() {
 }
 
 int main() {
+    test_collision();
     test_vm();
     test_skip_script();
     test_read_class();

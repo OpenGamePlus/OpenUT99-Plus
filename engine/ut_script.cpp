@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "collision.h"
 #include "config.h"
 #include "packages.h"
 #include "vfs.h"
@@ -91,7 +92,8 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float sec
 
 int maps(ut::PackageSet& packages, const std::string& root, float seconds, const std::string& game) {
     std::map<std::string, int> errors;
-    int count = 0, failed = 0;
+    int count = 0, failed = 0, falling = 0, in_solid = 0;
+    std::map<std::string, int> solid_classes;
     size_t actors = 0;
     for (const auto& d : std::filesystem::directory_iterator(root + "/Maps")) {
         if (d.path().extension() != ".unr") continue;
@@ -110,8 +112,24 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
         }
         actors += w.actors.size();
         for (const auto& [e, n] : w.errors) errors[e] += n;
+        for (ut::Obj* o : w.actors) {
+            const ut::Value* mode = vm.prop(o, "Physics");
+            const ut::Value* loc = vm.prop(o, "Location");
+            const ut::Value* collide = vm.prop(o, "bCollideWorld");
+            falling += mode && mode->i == 2;
+            if (loc && collide && collide->i && w.model() && ut::point_solid(*w.model(), {loc->v[0], loc->v[1], loc->v[2]})) {
+                in_solid++;
+                solid_classes[vm.name_of(o->cls)]++;
+            }
+        }
     }
-    std::printf("%d maps, %d failed, %zu actors alive at the end\n", count, failed, actors);
+    std::printf("%d maps, %d failed, %zu actors alive at the end: %d still falling, %d colliding actors inside solid\n",
+                count, failed, actors, falling, in_solid);
+    if (in_solid) {
+        std::printf("inside solid, by class:\n");
+        ranked(solid_classes, 8);
+    }
+    std::printf("errors:\n");
     ranked(errors, 25);
     return 0;
 }

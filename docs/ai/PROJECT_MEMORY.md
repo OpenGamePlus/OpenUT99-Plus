@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — BSP collision and physics
+
+- `engine/collision.*`: point solidity and swept boxes on the level BSP; `World` runs falling, projectile, flying, rotating and a minimal walking, and `Trace`, `FastTrace`, `Move`, `SetLocation` use it. Sweep: of 904 actors falling at map start, 3 are still airborne after 5 s (Assault projectiles in flight).
+- Solidity rule found on data: front is empty; back is empty only from empty space through a node with flag 0x1 (not CSG); 1,283 / 1,285 player starts pass. Fixed on the way: a box that starts overlapping solid (pickups resting on floors, boxes near walls) must be able to move; only entering through a plane is a hit.
+- Next: actor collision (touch, bump, encroach) and pawns: player starts, bots walking (`MoveTo`, `WaitForLanding`).
+
 ## 2026-11-11 — actor world: retail maps run their script
 
 - `engine/world.*`: map actors become VM instances, the game class (`DeathMatchPlus`) is spawned as `Level.Game` with `InitGame`, play events, ticks, timers, `ForEach` iterators, pawn list, spawn / destroy, rotator math, `DynamicLoadObject`. `ut_script --maps 5`: all 83 maps run 5 s with no script error.

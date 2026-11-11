@@ -19,7 +19,8 @@ engine/
   script.{h,cpp}     bytecode walker, class defaults
   mesh.{h,cpp}       LodMesh
   vm.{h,cpp}         UnrealScript VM (functions, interpreter, natives)
-  world.{h,cpp}      map actors in the VM, play start, ticks, timers, Actor natives
+  collision.{h,cpp}  BSP solidity and swept-box traces
+  world.{h,cpp}      map actors in the VM, play start, ticks, timers, physics, Actor natives
   lighting.{h,cpp}   lightmap luxels, shadow bits, light colours, atlas
   scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, mesh actors, player starts
   render.{h,cpp}     OpenGL 3.3 renderer (library ut_render)
@@ -60,7 +61,7 @@ tools/
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
 | Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers agree with Python on all 396 packages (`compare_engine.py` compares counts and end offsets per object, not every value); level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load |
 | UnrealScript VM (C++) | functions load (all 20,052 retail); objects with class defaults (all 1,604 retail classes), instance / default variables, contexts (None skipped with a warning), structs, static arrays, casts; states (dispatch through the state, labels, `GotoState`, auto state, latent `Sleep`, `tick`); control flow, script and native calls, out / optional parameters, ≈ 140 operator, string and math natives; 13 retail `TestInfo` self-tests pass; `--states` sweep: every class enters its auto state, stops only on missing engine natives. No iterators or engine natives yet |
-| World (C++) | all 83 maps load their actors, start `DeathMatchPlus` and run with no script error (`--maps`); timers, `ForEach` iterators, pawn list, spawn / destroy; no physics, collision, traces, animation timing or sound |
+| World (C++) | all 83 maps load their actors, start `DeathMatchPlus` and run with no script error (`--maps`); timers, `ForEach` iterators, pawn list, spawn / destroy; physics against the BSP (falling, projectile, flying, rotating, minimal walking) and BSP traces: of 904 actors falling at start, 3 still airborne after 5 s; no actor-actor collision, animation timing or sound |
 | Network | not started |
 
 ## Commands
@@ -75,7 +76,7 @@ build/ut_script <UT99_DIR> Engine.TestInfo.TestSwitch   # run a script function:
 build/ut_script <UT99_DIR> --states                # phase C meter: auto state of every class, missing natives ranked
 build/ut_script <UT99_DIR> --run Package.Class [TICKS]   # spawn, auto state, tick its state code
 build/ut_script <UT99_DIR> --map MAP [SECONDS]      # play a map's script: errors and log ranked
-build/ut_script <UT99_DIR> --maps [SECONDS]         # every map; must say "0 failed" and list no errors
+build/ut_script <UT99_DIR> --maps [SECONDS]         # every map; must say "0 failed", list no errors, and only Camera + 1 BioAmmo inside solid
 build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # RMB + mouse look, WASD fly
 python3 tools/check_docs.py                    # doc checks
 python3 tools/upkg.py FILE [--names|--imports|--exports]
@@ -105,5 +106,6 @@ python3 tools/umesh.py FILE LODMESH --obj out/x.obj [FRAME]
 - `uini.parse(text) -> {section: {key: [values]}}`, `uini.package_paths(root, ini) -> {lower name: path}`; C++ `ut::parse_ini`, `ut::read_ini`, `ut::Vfs(root, ini).find(name)`.
 - C++ `ut::PackageSet(&vfs).resolve(pkg, ref) -> Object{package, exp}` (imports by name + class + group path); `ut::load_scene(set, map) -> Scene{batches, starts}`; `ut::Renderer(scene).draw(cam, w, h)`.
 - C++ `ut::load_function(pkg, ref) -> Function{locals, code (in-memory form), native, flags}`; `ut::Vm(&set)`: `bind_natives(core)`, `object(pkg, ref) -> Obj*` (canonical, imports resolved), `spawn(cls)`, `defaults(cls)`, `goto_state(o, state, label)`, `tick(o, dt)`, `event(o, name, args)`, `prop(o, name)`, `instantiate(o)`, `add_native(name, fn)`, `call(fn, self, args) -> Value` (out parameters written back to `args`), `log`. Bytecode is untrusted: every read and jump is bounds-checked, call depth capped at 250.
+- C++ `ut::point_solid(model, p)`, `ut::trace(model, start, end, extent) -> Hit{hit, start_solid, time, normal}`.
 - C++ `ut::World(vm, set)`: `load(map, default_game)`, `begin_play()`, `tick(dt)`, `spawn(...)`, `actors`, `errors` (script errors keep the world running; counted by message).
 - C++ `ut::skip_script(pkg, pos, mem_size, &memory)`, `ut::read_class(pkg, export) -> ClassInfo{super_ref, defaults}`, `ut::read_lod_mesh(pkg, export) -> LodMesh` (frame 0, faces, wedges, materials, textures, scale, origin, rot_origin).

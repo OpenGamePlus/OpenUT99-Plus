@@ -40,8 +40,12 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
         if (Value* p = vm.prop(self, "TimerCounter")) p->f = 0;
         if (Value* p = vm.prop(self, "bTimerLoop")) p->i = a[1]->i != 0;
     });
-    vm.add_native("SetLocation", [&vm](Obj* self, std::vector<Value*>& a, Value& r) {
-        if (Value* p = vm.prop(self, "Location")) std::copy(a[0]->v, a[0]->v + 3, p->v);  // shortcut: no collision test
+    vm.add_native("SetLocation", [this](Obj* self, std::vector<Value*>& a, Value& r) {
+        Value* p = vm_.prop(self, "Location");
+        Value* collide = vm_.prop(self, "bCollideWorld");
+        // shortcut: a spot inside solid is refused; the original also nudges actors into free space
+        if (!p || (has_model_ && collide && collide->i && point_solid(model_, {a[0]->v[0], a[0]->v[1], a[0]->v[2]}))) return;
+        std::copy(a[0]->v, a[0]->v + 3, p->v);
         r.i = 1;
     });
     vm.add_native("SetRotation", [&vm](Obj* self, std::vector<Value*>& a, Value& r) {
@@ -84,17 +88,31 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
     vm.add_native("Spawn", [this](Obj* self, std::vector<Value*>& a, Value& r) {
         r.o = spawn(a[0]->o, self, a[1] ? a[1]->o : nullptr, a[2] ? &a[2]->s : nullptr, a[3], a[4]);
     });
-    vm.add_native("Move", [&vm](Obj* self, std::vector<Value*>& a, Value& r) {
-        if (Value* p = vm.prop(self, "Location"))
-            for (int k = 0; k < 3; k++) p->v[k] += a[0]->v[k];  // shortcut: no collision, never blocked
-        r.i = 1;
+    vm.add_native("Move", [this](Obj* self, std::vector<Value*>& a, Value& r) {
+        r.i = !move(self, {a[0]->v[0], a[0]->v[1], a[0]->v[2]}).hit;  // shortcut: no step-up or sliding in Move
     });
     vm.add_native("SetCollisionSize", [&vm](Obj* self, std::vector<Value*>& a, Value& r) {
         if (Value* p = vm.prop(self, "CollisionRadius")) p->f = a[0]->f;  // shortcut: no encroachment test
         if (Value* p = vm.prop(self, "CollisionHeight")) p->f = a[1]->f;
         r.i = 1;
     });
-    vm.add_native("FastTrace", [](Obj*, std::vector<Value*>&, Value& r) { r.i = 1; });  // shortcut: no BSP trace yet, always clear
+    // FastTrace(vector TraceEnd, optional vector TraceStart): true if the world does not block the line.
+    vm.add_native("FastTrace", [this](Obj* self, std::vector<Value*>& a, Value& r) {
+        const Value* from = a[1] ? a[1] : vm_.prop(self, "Location");
+        r.i = !has_model_ || !from || !trace(model_, {from->v[0], from->v[1], from->v[2]}, {a[0]->v[0], a[0]->v[1], a[0]->v[2]}, {}).hit;
+    });
+    // Trace(out HitLocation, out HitNormal, TraceEnd, optional TraceStart, optional bTraceActors, optional Extent)
+    vm.add_native("Trace", [this](Obj* self, std::vector<Value*>& a, Value& r) {
+        const Value* from = a[3] ? a[3] : vm_.prop(self, "Location");
+        if (!has_model_ || !from) return;
+        Vec3 s0{from->v[0], from->v[1], from->v[2]}, e{a[2]->v[0], a[2]->v[1], a[2]->v[2]};
+        Vec3 ext = a[5] ? Vec3{a[5]->v[0], a[5]->v[1], a[5]->v[2]} : Vec3{0, 0, 0};
+        Hit h = trace(model_, s0, e, ext);  // shortcut: actors are not traced yet, only the world
+        if (!h.hit) return;
+        a[0]->v[0] = s0.x + (e.x - s0.x) * h.time, a[0]->v[1] = s0.y + (e.y - s0.y) * h.time, a[0]->v[2] = s0.z + (e.z - s0.z) * h.time;
+        a[1]->v[0] = h.normal.x, a[1]->v[1] = h.normal.y, a[1]->v[2] = h.normal.z;
+        r.o = level_info;  // the world (BSP) is reported as the LevelInfo
+    });
     vm.add_native("describeSpec", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: reach specs not loaded yet
     vm.add_native("SetOwner", [&vm](Obj* self, std::vector<Value*>& a, Value&) {
         if (Value* p = vm.prop(self, "Owner")) p->o = a[0]->o;  // shortcut: GainedChild / LostChild not sent yet
@@ -190,7 +208,13 @@ void World::load(const std::string& map, const std::string& default_game) {
     for (const Export& e : p->exports)
         if (e.size && e.class_ref && object_name(*p, e.class_ref) == "Level") level = &e;
     if (!level) throw std::runtime_error("no Level in " + map);
-    for (int32_t ref : read_level(*p, *level).actors) {
+    map_ = p;
+    Level lv = read_level(*p, *level);
+    if (lv.model > 0 && size_t(lv.model) <= p->exports.size()) {
+        model_ = read_model(*p, p->exports[size_t(lv.model - 1)]);
+        has_model_ = true;
+    }
+    for (int32_t ref : lv.actors) {
         if (!ref) continue;
         Obj* o = vm_.object(*p, ref);
         try {
@@ -254,6 +278,117 @@ void World::destroy(Obj* o) {
     guarded(o, "Destroyed");
 }
 
+Obj* World::zone_at(Vec3 p) {
+    if (!has_model_ || model_.nodes.empty()) return level_info;
+    int32_t n = 0, zone = 0;
+    for (int g = 0; n >= 0 && size_t(n) < model_.nodes.size() && g < 4096; g++) {
+        const Node& nd = model_.nodes[size_t(n)];
+        bool front = nd.plane[0] * p.x + nd.plane[1] * p.y + nd.plane[2] * p.z - nd.plane[3] >= 0;
+        zone = nd.zone[front ? 1 : 0];
+        n = front ? nd.front : nd.back;
+    }
+    int32_t ref = size_t(zone) < model_.zone_actors.size() ? model_.zone_actors[size_t(zone)] : 0;
+    return ref ? vm_.object(*map_, ref) : level_info;
+}
+
+Hit World::move(Obj* o, Vec3 d) {
+    Value* loc = vm_.prop(o, "Location");
+    if (!loc) return {};
+    Vec3 from{loc->v[0], loc->v[1], loc->v[2]};
+    Value* collide = vm_.prop(o, "bCollideWorld");
+    Hit h;
+    if (has_model_ && collide && collide->i) {
+        Value* r = vm_.prop(o, "CollisionRadius");
+        Value* hh = vm_.prop(o, "CollisionHeight");
+        Vec3 ext{r ? r->f : 0, r ? r->f : 0, hh ? hh->f : 0};  // shortcut: the collision cylinder as a box
+        h = trace(model_, from, {from.x + d.x, from.y + d.y, from.z + d.z}, ext);
+    }
+    loc->v[0] += d.x * h.time, loc->v[1] += d.y * h.time, loc->v[2] += d.z * h.time;
+    return h;
+}
+
+void World::physics(Obj* o, float dt) {
+    // Physics modes (Actor.EPhysics): 1 walking, 2 falling, 4 flying, 5 rotating, 6 projectile.
+    Value* mode = vm_.prop(o, "Physics");
+    Value* vel = vm_.prop(o, "Velocity");
+    Value* is_static = vm_.prop(o, "bStatic");
+    if (!mode || !vel || mode->i == 0 || (is_static && is_static->i)) return;  // unverified: static actors never move
+    float* v = vel->v;
+    auto hit_value = [&](const Hit& h) {
+        Value n = Value::of(VT::Vector);
+        n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
+        return n;
+    };
+    auto wall = [&](const Hit& h) {
+        Value w = Value::of(VT::Object);
+        w.o = level_info;
+        guarded(o, "HitWall", {hit_value(h), w});
+    };
+    switch (mode->i) {
+        case 5:  // rotating: RotationRate per second
+            if (Value* rot = vm_.prop(o, "Rotation"); Value* rate = vm_.prop(o, "RotationRate"))
+                for (int k = 0; k < 3; k++) rot->r[k] += int32_t(float(rate->r[k]) * dt);
+            return;
+        case 2: {  // falling: zone gravity, land on floors (normal z >= 0.7, unverified), slide off walls
+            Value* loc = vm_.prop(o, "Location");
+            Obj* zone = loc ? zone_at({loc->v[0], loc->v[1], loc->v[2]}) : level_info;
+            Value* g = vm_.prop(zone, "ZoneGravity");
+            Value* term = vm_.prop(zone, "ZoneTerminalVelocity");
+            for (int k = 0; k < 3; k++) v[k] += (g ? g->v[k] : (k == 2 ? -950.f : 0.f)) * dt;
+            float speed = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+            if (term && term->f > 0 && speed > term->f)
+                for (int k = 0; k < 3; k++) v[k] *= term->f / speed;
+            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt});
+            if (!h.hit) return;
+            if (h.normal.z >= 0.7f) {
+                guarded(o, "Landed", {hit_value(h)});
+                if (mode->i == 2) {  // Landed did not change physics
+                    Value* pawn = vm_.prop(o, "bIsPawn");
+                    mode->i = pawn && pawn->i ? 1 : 0;
+                    v[2] = 0;
+                    if (mode->i == 0) v[0] = v[1] = 0;
+                }
+            } else {
+                wall(h);
+                float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
+                v[0] -= dot * h.normal.x, v[1] -= dot * h.normal.y, v[2] -= dot * h.normal.z;
+            }
+            return;
+        }
+        case 6: {  // projectile
+            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt});
+            if (h.hit) wall(h);
+            return;
+        }
+        case 4: {  // flying: slide along what it hits
+            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt});
+            if (h.hit) {
+                wall(h);
+                float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
+                v[0] -= dot * h.normal.x, v[1] -= dot * h.normal.y, v[2] -= dot * h.normal.z;
+            }
+            return;
+        }
+        case 1: {  // walking: horizontal move, then stay on the floor or start falling (shortcut: no step-up, no accel)
+            Value* collide = vm_.prop(o, "bCollideWorld");
+            if (!has_model_ || !collide || !collide->i) return;  // no floor to find (e.g. waving flag decorations)
+            Hit h = move(o, {v[0] * dt, v[1] * dt, 0});
+            if (h.hit) {
+                float dot = v[0] * h.normal.x + v[1] * h.normal.y;
+                v[0] -= dot * h.normal.x, v[1] -= dot * h.normal.y;
+            }
+            Value* loc = vm_.prop(o, "Location");
+            Hit down = move(o, {0, 0, -25});  // max step height 25, unverified
+            if (!down.hit && loc) {
+                loc->v[2] += 25;  // nothing below: undo the probe and fall
+                mode->i = 2;
+            }
+            return;
+        }
+        default: return;  // interpolating, moving brush, spider, trailer...: not yet
+    }
+}
+
 void World::tick(float dt) {
     time += dt;
     if (Value* t = vm_.prop(level_info, "TimeSeconds")) t->f = time;
@@ -271,6 +406,8 @@ void World::tick(float dt) {
             else rate->f = 0, counter->f = 0;  // unverified: what a one-shot timer leaves in TimerCounter
             guarded(o, "Timer");
         }
+        if (deleted_.count(o)) continue;
+        physics(o, dt);
         if (deleted_.count(o)) continue;
         try {
             vm_.tick(o, dt);

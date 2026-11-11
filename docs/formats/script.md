@@ -102,7 +102,7 @@ State sweep (`ut_script <UT99_DIR> --states`): all 1,604 classes spawn; 453 ente
 
 Engine: `engine/world.*`. A map's actors become instances (class defaults, then the actor's own tagged properties); `Level` points at the first actor, the LevelInfo. The game class (`LevelInfo.DefaultGameType`, else `[Engine.Engine] DefaultGame`) is spawned as `Level.Game` and gets `InitGame`; what it spawns gets its play events at once, then every map actor gets `PreBeginPlay`, `BeginPlay`, `PostBeginPlay`, `SetInitialState`, phase by phase. Each tick: `Level.TimeSeconds`, `Tick`, timers, state code. This order is **unverified**; the evidence is only that the retail scripts then run cleanly (e.g. `DMMutator` needs its `PostBeginPlay` before the map's actors call `CheckReplacement`).
 
-Map sweep (`ut_script <UT99_DIR> --maps 5`): all 83 maps load, start `DeathMatchPlus` and run 5 s with no script error; 78,560 actors alive at the end. Actor natives are mostly placeholders (see [debt.md](../roadmap/debt.md)): no physics, collision, traces, animation timing or sound.
+Map sweep (`ut_script <UT99_DIR> --maps 5`): all 83 maps load, start `DeathMatchPlus` and run 5 s with no script error; 78,578 actors alive at the end. Physics: falling (zone gravity, terminal velocity, `Landed` on a normal with z ≥ 0.7, `HitWall` and slide otherwise), projectile, flying, rotating, a minimal walking; `Trace`, `FastTrace`, `Move`, `SetLocation` use the BSP ([level.md](level.md#collision-engine)). Still placeholders (see [debt.md](../roadmap/debt.md)): actor-actor collision, animation timing, sound.
 
 Not yet: `new`, dynamic arrays, binary struct defaults (other than Vector / Rotator), state `ignores`, engine natives (actors, spawning, timers).
 
