@@ -10,7 +10,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wconversion)
 endif()
 
-add_library(ut STATIC engine/upkg.cpp engine/config.cpp engine/vfs.cpp engine/texture.cpp engine/level.cpp engine/packages.cpp engine/png.cpp engine/scene.cpp engine/lighting.cpp engine/script.cpp engine/mesh.cpp)
+add_library(ut STATIC engine/upkg.cpp engine/config.cpp engine/vfs.cpp engine/texture.cpp engine/level.cpp engine/packages.cpp engine/png.cpp engine/scene.cpp engine/lighting.cpp engine/script.cpp engine/mesh.cpp engine/vm.cpp)
 target_include_directories(ut PUBLIC engine)
 
 find_package(PkgConfig REQUIRED)
@@ -25,6 +25,9 @@ target_link_libraries(ut_mapview PRIVATE ut_render PkgConfig::SDL2)
 
 add_executable(ut_dump engine/ut_dump.cpp)
 target_link_libraries(ut_dump PRIVATE ut)
+
+add_executable(ut_script engine/ut_script.cpp)
+target_link_libraries(ut_script PRIVATE ut)
 
 enable_testing()
 add_executable(test_engine engine/test_engine.cpp)

@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — UnrealScript VM: first retail functions run
+
+- `engine/vm.*` + `ut_script`: functions are loaded in their in-memory form (the bytecode walker now emits it), natives are bound by the export name of their Core declaration (`Add_IntInt`), not by hard-coded indices. `Console.FormatFloat`, `TwoDigitString` and Epic's own `TestInfo` self-tests (loops with `continue`, `switch`, optional out parameters) run with every `assert` passing.
+- Learned on retail data: the `0x18` skip size covers the operand plus the closing `0x16`.
+- Next: objects (self, instance / default variables), then states.
+
 ## 2026-11-11 — ADR 0006 accepted; repository published
 
 - The maintainer accepted ADR 0006: the engine runs the retail UnrealScript bytecode in a VM and implements only the native functions in C++. Phase C starts with the VM.

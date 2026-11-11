@@ -12,25 +12,37 @@ const int kMaxDepth = 256;
 struct Walker {
     const Package& p;
     Reader r;
+    std::vector<uint8_t>* out = nullptr;  // if set, receives the in-memory form
     uint64_t mem = 0;
     int depth = 0;
 
+    void emit(size_t from) {
+        if (out) out->insert(out->end(), r.data.begin() + long(from), r.data.begin() + long(r.pos));
+    }
     uint8_t byte() {
         mem += 1;
-        return r.u8();
+        uint8_t v = r.u8();
+        emit(r.pos - 1);
+        return v;
     }
     void raw(size_t n) {
         r.need(n);
         r.pos += n;
         mem += n;
+        emit(r.pos - n);
     }
     uint16_t u16() {
         mem += 2;
-        return r.u16();
+        uint16_t v = r.u16();
+        emit(r.pos - 2);
+        return v;
     }
     int32_t ref() {  // compact on disk, 4 bytes in memory
         mem += 4;
-        return r.index();
+        int32_t v = r.index();
+        if (out)
+            for (int i = 0; i < 4; i++) out->push_back(uint8_t(uint32_t(v) >> (8 * i)));
+        return v;
     }
     void params() {
         while (expr() != 0x16) {
@@ -85,8 +97,8 @@ struct Walker {
 
 }  // namespace
 
-size_t skip_script(const Package& p, size_t pos, uint32_t mem_size) {
-    Walker w{p, Reader(p.data, pos)};
+size_t skip_script(const Package& p, size_t pos, uint32_t mem_size, std::vector<uint8_t>* memory) {
+    Walker w{p, Reader(p.data, pos), memory};
     while (w.mem < mem_size) w.expr();
     if (w.mem != mem_size) throw std::runtime_error("script does not end at its declared size");
     return w.r.pos;

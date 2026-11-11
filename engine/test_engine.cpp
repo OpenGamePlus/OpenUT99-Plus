@@ -21,6 +21,7 @@
 #include "texture.h"
 #include "upkg.h"
 #include "vfs.h"
+#include "vm.h"
 
 using namespace ut;
 using Bytes = std::vector<uint8_t>;
@@ -360,6 +361,9 @@ static void test_skip_script() {
     p.names = {"None", "Tick", "Health", "Label1"};
     p.data = script_bytes();
     assert(skip_script(p, 0, 11 + 7 + 2 + 2 + 17) == p.data.size());
+    Bytes mem;
+    skip_script(p, 0, 11 + 7 + 2 + 2 + 17, &mem);
+    assert(mem.size() == 11 + 7 + 2 + 2 + 17 && mem[2] == 0xFD && mem[5] == 0xFF);  // ref -3 as a 4-byte int
     assert(throws([&] { skip_script(p, 0, 3); }));  // size does not land on a token boundary
     p.data = {0x03};
     assert(throws([&] { skip_script(p, 0, 1); }));  // unknown token
@@ -386,6 +390,75 @@ static void test_read_class() {
     assert(c.super_ref == -1 && c.defaults.size() == 1 && prop_int(p, c.defaults[0]) == 100);
 }
 
+// Package with two script functions and the native declarations they call (exports are 1-based refs):
+// 1 class T; 2 Mul(A, B, optional out C) int: C = A * B; return C; 3-6 its properties;
+// 7 Multiply_IntInt (native 144) + 8-10; 11 OrOr_BoolBool (native 132) + 12-14; 15 Or() bool + 16.
+// Or returns false || (true || native 0xF0()): the unbound native must be skipped by the short circuit.
+static Package vm_package() {
+    Package p;
+    p.version = 69;
+    p.names = {"None", "T", "Mul", "A", "B", "C", "ReturnValue", "Multiply_IntInt", "Function", "IntProperty",
+               "Core", "Class", "OrOr_BoolBool", "BoolProperty", "Or"};
+    p.imports = {{"Core", "Class", 0, "Function"}, {"Core", "Class", 0, "IntProperty"}, {"Core", "Class", 0, "BoolProperty"}};
+    auto add = [&](int32_t cls, int32_t outer, const char* name, const Bytes& d) {
+        p.exports.push_back({cls, 0, outer, name, 0, int32_t(d.size()), int32_t(p.data.size())});
+        put(p.data, d);
+    };
+    auto prop = [](int32_t next, uint32_t flags) {
+        Bytes b = cindex(0);  // no tagged properties
+        put(b, cindex(0)); put(b, cindex(next)); put(b, uint16_t(1)); put(b, uint16_t(4)); put(b, flags); put(b, cindex(0));
+        return b;
+    };
+    auto func = [](int32_t children, const Bytes& code, uint32_t mem, uint16_t native, uint32_t flags) {
+        Bytes b = cindex(0);
+        for (int i = 0; i < 3; i++) put(b, cindex(0));  // super, next, script text
+        put(b, cindex(children)); put(b, cindex(0)); put(b, int32_t(0)); put(b, int32_t(0)); put(b, mem); put(b, code);
+        put(b, native); b.push_back(0); put(b, flags);
+        return b;
+    };
+    add(0, 0, "T", {});
+    Bytes mul = {0x0F, 0x00};
+    put(mul, cindex(5)); mul.push_back(0x90);
+    mul.push_back(0x00); put(mul, cindex(3)); mul.push_back(0x00); put(mul, cindex(4)); mul.push_back(0x16);
+    mul.push_back(0x04); mul.push_back(0x00); put(mul, cindex(5));
+    add(-1, 1, "Mul", func(3, mul, 24, 0, 0));
+    add(-2, 2, "A", prop(4, kParm));
+    add(-2, 2, "B", prop(5, kParm));
+    add(-2, 2, "C", prop(6, kParm | kOptionalParm | kOutParm));
+    add(-2, 2, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    add(-1, 1, "Multiply_IntInt", func(8, {}, 0, 144, kFuncNative | 1));
+    add(-2, 7, "A", prop(9, kParm));
+    add(-2, 7, "B", prop(10, kParm));
+    add(-2, 7, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    add(-1, 1, "OrOr_BoolBool", func(12, {}, 0, 132, kFuncNative | 1));
+    add(-3, 11, "A", prop(13, kParm));
+    add(-3, 11, "B", prop(14, kParm | kSkipParm));
+    add(-3, 11, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    Bytes orc = {0x04, 0x84, 0x28, 0x18, 9, 0, 0x84, 0x27, 0x18, 3, 0, 0xF0, 0x16, 0x16, 0x16};
+    add(-1, 1, "Or", func(16, orc, 15, 0, 0));
+    add(-3, 15, "ReturnValue", prop(0, kParm | kOutParm | kReturnParm));
+    return p;
+}
+
+static void test_vm() {
+    Package p = vm_package();
+    Vm vm(nullptr);
+    vm.bind_natives(p);
+    const Function& mul = vm.function(p, 2);
+    assert(mul.locals.size() == 4 && mul.locals[2].type == VT::Int && mul.code.size() == 24);
+    std::vector<Value> args = {Value::of(VT::Int), Value::of(VT::Int), Value::of(VT::Int)};
+    args[0].i = 6, args[1].i = -7;
+    Value r = vm.call(mul, args);
+    assert(r.t == VT::Int && r.i == -42 && args[2].i == -42);  // return value and out parameter
+    std::vector<Value> none;
+    Value b = vm.call(vm.function(p, 15), none);
+    assert(b.t == VT::Bool && b.i == 1);
+    p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
+    Vm vm2(nullptr);
+    vm2.bind_natives(p);
+    assert(throws([&] { vm2.call(vm2.function(p, 15), none); }));
+}
+
 static void test_unpack_vert() {
     uint32_t v = uint32_t(-1024 & 0x7FF) | uint32_t(1023 & 0x7FF) << 11 | uint32_t(-512 & 0x3FF) << 22;
     Vec3 p = unpack_vert(v);
@@ -393,6 +466,7 @@ static void test_unpack_vert() {
 }
 
 int main() {
+    test_vm();
     test_skip_script();
     test_read_class();
     test_unpack_vert();

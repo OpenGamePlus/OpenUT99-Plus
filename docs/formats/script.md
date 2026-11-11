@@ -71,6 +71,23 @@ The header's script size counts memory, where object references and names take 4
 | 0x60–0x6F | extended native call | u8 (index = (token − 0x60) × 256 + u8), params… 0x16 |
 | 0x70–0xFF | native call (index = token) | params… 0x16 |
 
+## Execution (VM)
+
+Engine: `engine/vm.*` ([ADR 0006](../architecture/adr/0006-unrealscript-execution.md)). A function is loaded into its in-memory form (references and names widened to 4-byte ints), so jump, case and skip offsets index it directly. All 20,052 retail functions load; 662 of their 50,236 parameters and locals have types the VM does not hold yet (structs other than Vector / Rotator, dynamic arrays).
+
+| Behaviour | Evidence |
+|---|---|
+| Function `children` lists parameters in declaration order, then the return value, then locals. Flags: 0x80 parameter, 0x10 optional, 0x100 out, 0x200 skip, 0x400 return value | retail declarations, e.g. `Core.Object.AddAdd_PreInt`, `Engine.TestInfo.SubTestOptionalOut` |
+| Native index → function: each native declaration in Core / Engine carries its index; its export name (`Add_IntInt`, `InStr`) names the operation, so natives are implemented by name | 152 indexed natives in Core |
+| `0x18` skip (right operand of `&&`, `\|\|`, parameters flagged skip): the u16 counts the operand **and** the closing `0x16`; when the left side decides, execution resumes after the call | retail `TestInfo.TestContinueWhile`: size 10 = 9-byte operand + `0x16` |
+| `0x05` switch evaluates the cases in turn (`0x0A`: u16 offset of the next case, `0xFFFF` = default) and resumes at the first match; a case reached by falling through skips its value | `TestInfo.TestSwitch` logs its success |
+| Omitted optional parameters are `0x0B` (or missing before `0x16`) and start as zero | `TestInfo.TestOptionalOut` logs its success |
+| Conversions `0x39`–`0x59` (e.g. `0x53` int → string, `0x55` float → string) | public UE1 documentation; `0x55` with 6 decimals and the others' text formats are **unverified** |
+
+Retail checks (`build/ut_script <UT99_DIR> Package.Class.Function [args]`): `Engine.Console.FormatFloat 1.2345` → `"1.23"`, `Botpack.TournamentScoreBoard.TwoDigitString 5` → `"05"`, and `Engine.TestInfo` `TestContinueWhile`, `TestContinueDoUntil`, `TestContinueFor`, `TestSwitch`, `TestOptionalOut` run to the end with every `assert` passing and the log their source text predicts.
+
+Not yet: objects (`self`, instance and default variables, contexts), states and labels, iterators, `new`, casts, struct member assignment, arrays.
+
 ## Numbers (retail `System/*.u`)
 
 | Measure | Value |
@@ -82,5 +99,5 @@ The header's script size counts memory, where object references and names take 4
 
 ## Open
 
-- Semantics of each native function index (they live in the C++ engine); needed for the UnrealScript execution decision ([debt.md](../roadmap/debt.md)).
+- Semantics of each native function beyond the operators, string and math functions implemented in `engine/vm.cpp`.
 - Flag bit names (function, property, class, state flags).

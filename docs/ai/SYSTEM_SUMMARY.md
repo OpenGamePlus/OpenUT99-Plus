@@ -1,6 +1,6 @@
 # SYSTEM_SUMMARY
 
-Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: every export byte-exact. B (C++ engine) in progress: textured BSP level viewer, all retail maps load.
+Last updated: 2026-11-11. Phase: A (package loading) complete on retail data: every export byte-exact. B (C++ engine) in progress: textured BSP level viewer, all retail maps load. C started: the UnrealScript VM runs retail functions that need no objects.
 
 ## Tree
 
@@ -8,7 +8,7 @@ Last updated: 2026-11-10. Phase: A (package loading) complete on retail data: ev
 AGENTS.md            agent entry point
 LICENSE              AGPL-3.0
 README.md
-CMakeLists.txt       C++17 engine build (library ut, ut_dump, test_engine)
+CMakeLists.txt       C++17 engine build (library ut, ut_dump, ut_script, test_engine)
 engine/
   upkg.{h,cpp}       packages + tagged properties (port of tools/upkg.py, uprops.py)
   config.{h,cpp}     .ini parsing
@@ -18,12 +18,14 @@ engine/
   level.{h,cpp}      Model (BSP), Level, surface triangles
   script.{h,cpp}     bytecode walker, class defaults
   mesh.{h,cpp}       LodMesh
+  vm.{h,cpp}         UnrealScript VM (functions, interpreter, natives)
   lighting.{h,cpp}   lightmap luxels, shadow bits, light colours, atlas
   scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, mesh actors, player starts
   render.{h,cpp}     OpenGL 3.3 renderer (library ut_render)
   png.{h,cpp}        PNG encoder for screenshots
   mapview.cpp        ut_mapview: free-fly viewer, --shot, --check
   ut_dump.cpp        summary / property counts / --deps
+  ut_script.cpp      run one script function
   test_engine.cpp    unit tests on synthetic data (ctest)
 docs/                specs, ADRs, roadmap, AI layer (index: docs/README.md)
 tools/
@@ -56,6 +58,7 @@ tools/
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
 | Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers agree with Python on all 396 packages (`compare_engine.py` compares counts and end offsets per object, not every value); level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load |
+| UnrealScript VM (C++) | functions load (all 20,052 retail); locals, control flow, script and native calls, out / optional parameters, ≈ 140 operator, string and math natives; retail `TestInfo` self-tests pass. No objects, states or iterators yet |
 | Network | not started |
 
 ## Commands
@@ -66,6 +69,7 @@ cmake -S . -B build && cmake --build build && ctest --test-dir build   # engine 
 python3 tools/compare_engine.py <UT99_DIR> build/ut_dump      # C++ vs Python, must say "0 differ"
 build/ut_dump --deps <UT99_DIR>                 # must say "0 missing dependencies" (same as uini.py --deps)
 build/ut_mapview <UT99_DIR> --check             # every map loads: "83 maps, 0 errors"
+build/ut_script <UT99_DIR> Engine.TestInfo.TestSwitch   # run a script function: return value, out parameters, log
 build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # RMB + mouse look, WASD fly
 python3 tools/check_docs.py                    # doc checks
 python3 tools/upkg.py FILE [--names|--imports|--exports]
@@ -94,4 +98,5 @@ python3 tools/umesh.py FILE LODMESH --obj out/x.obj [FRAME]
 - C++ `ut::load_package(path) -> Package` (`names`, `imports`, `exports`, `data`), `ut::read_properties(pkg, export, &end) -> vector<Property>` (raw `value_pos`/`size`; decode with `prop_int`, `prop_float`, `prop_ref`, `prop_byte`, `prop_string`, `prop_vector`). Package data is untrusted (cache packages come from servers): every read is bounds-checked, exports outside the file are rejected at load, Model indices and lightmap fields are validated (`ut::validate_model`), bytecode nesting is capped at 256; bad data throws `std::runtime_error`. Checked with an ASan/UBSan build on all retail maps.
 - `uini.parse(text) -> {section: {key: [values]}}`, `uini.package_paths(root, ini) -> {lower name: path}`; C++ `ut::parse_ini`, `ut::read_ini`, `ut::Vfs(root, ini).find(name)`.
 - C++ `ut::PackageSet(&vfs).resolve(pkg, ref) -> Object{package, exp}` (imports by name + class + group path); `ut::load_scene(set, map) -> Scene{batches, starts}`; `ut::Renderer(scene).draw(cam, w, h)`.
-- C++ `ut::skip_script(pkg, pos, mem_size)`, `ut::read_class(pkg, export) -> ClassInfo{super_ref, defaults}`, `ut::read_lod_mesh(pkg, export) -> LodMesh` (frame 0, faces, wedges, materials, textures, scale, origin, rot_origin).
+- C++ `ut::load_function(pkg, ref) -> Function{locals, code (in-memory form), native, flags}`; `ut::Vm(&set)`: `bind_natives(core)`, `call(fn, args) -> Value` (out parameters written back to `args`), `log`. Bytecode is untrusted: every read and jump is bounds-checked, call depth capped at 250.
+- C++ `ut::skip_script(pkg, pos, mem_size, &memory)`, `ut::read_class(pkg, export) -> ClassInfo{super_ref, defaults}`, `ut::read_lod_mesh(pkg, export) -> LodMesh` (frame 0, faces, wedges, materials, textures, scale, origin, rot_origin).
