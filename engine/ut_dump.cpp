@@ -1,12 +1,38 @@
 // ut_dump FILE            summary line, same text as tools/upkg.py
 // ut_dump FILE --props    per non-class export: "<index> <property count> <end offset>", compared by tools/compare_engine.py
+// ut_dump --deps DIR       resolve every top-level package import through the Vfs (same report as tools/uini.py --deps)
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <map>
+#include <set>
 
+#include "config.h"
 #include "upkg.h"
+#include "vfs.h"
+
+static int deps(const std::string& root) {
+    ut::Vfs vfs(root, ut::read_ini(root + "/System/UnrealTournament.ini"));
+    std::set<std::string> files;
+    for (const auto& kv : vfs.packages()) files.insert(kv.second);
+    std::map<std::string, int> missing;
+    for (const std::string& f : files)
+        for (const ut::Import& im : ut::load_package(f).imports)
+            if (im.class_name == "Package" && im.package == 0 && vfs.find(im.name).empty()) missing[im.name]++;
+    std::printf("%zu packages, %zu missing dependencies\n", files.size(), missing.size());
+    for (const auto& [name, n] : missing) std::printf("  %s (imported by %d)\n", name.c_str(), n);
+    return 0;
+}
 
 int main(int argc, char** argv) {
+    if (argc == 3 && std::strcmp(argv[1], "--deps") == 0) {
+        try {
+            return deps(argv[2]);
+        } catch (const std::exception& ex) {
+            std::fprintf(stderr, "%s\n", ex.what());
+            return 1;
+        }
+    }
     if (argc < 2 || (argc == 3 && std::strcmp(argv[2], "--props") != 0) || argc > 3) {
         std::fprintf(stderr, "usage: ut_dump FILE [--props]\n");
         return 2;

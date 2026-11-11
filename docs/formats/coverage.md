@@ -15,5 +15,5 @@ Phase A status: `uobjects.py --sweep <UT99_DIR>` reports every one of the 276,88
 | `Mesh`, `LodMesh` (vertex animation), `SkeletalMesh`, `Animation` | [mesh.md](mesh.md) | `tools/umesh.py` | exact; LodMesh frame checked visually |
 | `Class`, `State`, `Function`, `Struct`, `Enum`, `Const`, `TextBuffer`, `*Property`, bytecode | [script.md](script.md) | `tools/uscript.py` | exact on all; token semantics from public docs |
 | `Font` | [font.md](font.md) | `tools/ufont.py` | exact |
-| `.ini` / `.int` configuration and localisation | — | — | open |
+| `.ini` / `.int` configuration, package lookup | [ini.md](ini.md) | `tools/uini.py`, `engine/config.*`, `engine/vfs.*` | all dependencies resolve |
 | Network protocol | — | — | open (roadmap E) |

@@ -10,7 +10,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   add_compile_options(-Wall -Wextra -Wconversion)
 endif()
 
-add_library(ut STATIC engine/upkg.cpp)
+add_library(ut STATIC engine/upkg.cpp engine/config.cpp engine/vfs.cpp)
 target_include_directories(ut PUBLIC engine)
 
 add_executable(ut_dump engine/ut_dump.cpp)

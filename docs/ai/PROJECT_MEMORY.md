@@ -2,6 +2,10 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — configuration and package lookup
+
+- `tools/uini.py` and `engine/config.*` / `engine/vfs.*`: `.ini` sections with repeated keys; packages found through `[Core.System] Paths`, then the download cache (`cache.ini` maps GUID file names to package names). Every top-level import of every retail package resolves, in Python and C++.
+
 ## 2026-11-10 — C++ engine started
 
 - `CMakeLists.txt`, `engine/upkg.*`: package and tagged-property reader in C++17, built with `-Wall -Wextra -Wconversion`, no warnings; unit tests reuse the Python synthetic inputs.

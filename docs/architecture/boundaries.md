@@ -13,10 +13,13 @@
 | `tools/uscript.py` | script objects, property declarations, bytecode walker | `upkg`, `uprops`, `uobjects` |
 | `tools/umodel.py` | Polys, Model (BSP), Level | `upkg`, `uobjects` |
 | `tools/umesh.py` | Mesh, LodMesh, SkeletalMesh, Animation, OBJ export | `upkg`, `uobjects` |
+| `tools/uini.py` | `.ini` parsing, package lookup, dependency check | `upkg` |
 | `tools/check_docs.py` | documentation checker | std only |
 
 | `engine/upkg.*` (library `ut`) | packages, compact index, strings, lazy arrays, tagged properties (port of `upkg.py` + `uprops.py`) | std only |
-| `engine/ut_dump.cpp` | executable: package summary, property counts per export | `upkg` |
+| `engine/config.*` | `.ini` parsing | std only |
+| `engine/vfs.*` | package name → file (Paths, cache) | `config` |
+| `engine/ut_dump.cpp` | executable: package summary, property counts, dependency check | `upkg`, `config`, `vfs` |
 | `tools/compare_engine.py` | runs `ut_dump` against the Python readers on an install | `upkg`, `uprops` (Python) |
 
 ## Rules

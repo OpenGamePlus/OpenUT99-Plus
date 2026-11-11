@@ -6,7 +6,12 @@
 #include <string>
 #include <vector>
 
+#include <filesystem>
+#include <fstream>
+
+#include "config.h"
 #include "upkg.h"
+#include "vfs.h"
 
 using namespace ut;
 using Bytes = std::vector<uint8_t>;
@@ -142,7 +147,38 @@ static void test_properties() {
     assert(throws([&] { read_properties(p, e, &end); }));
 }
 
+static const char* kIni =
+    "[URL]\nMap=Index.unr\n[Core.System]\nCachePath=../Cache\nCacheExt=.uxx\n"
+    "Paths=../System/*.u\nPaths=../Maps/*.unr\n; comment\n[Empty]\n";
+
+static void test_ini() {
+    Ini ini = parse_ini(kIni);
+    const std::vector<std::string>& paths = ini.at("Core.System").at("Paths");
+    assert(paths.size() == 2 && paths[1] == "../Maps/*.unr");
+    assert(ini.at("URL").at("Map")[0] == "Index.unr");
+    assert(ini.at("Empty").empty());
+}
+
+static void test_vfs() {
+    namespace fs = std::filesystem;
+    fs::path root = fs::temp_directory_path() / "ut_test_vfs";
+    fs::remove_all(root);
+    for (const char* rel : {"System/Engine.u", "Maps/DM-Test.unr", "Cache/ABCD.uxx"}) {
+        fs::create_directories((root / rel).parent_path());
+        std::ofstream(root / rel).put('x');
+    }
+    std::ofstream(root / "Cache" / "cache.ini") << "[Cache]\nABCD=Custom.utx\nMISSING=Gone.u\n";
+    Vfs vfs(root.string(), parse_ini(kIni));
+    assert(vfs.find("ENGINE") == (root / "System" / "Engine.u").string());
+    assert(vfs.find("dm-test") == (root / "Maps" / "DM-Test.unr").string());
+    assert(vfs.find("Custom") == (root / "Cache" / "ABCD.uxx").string());
+    assert(vfs.find("Gone").empty());
+    fs::remove_all(root);
+}
+
 int main() {
+    test_ini();
+    test_vfs();
     test_compact_index();
     test_parse_package();
     test_string_utf16();

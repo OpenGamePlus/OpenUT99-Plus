@@ -2,7 +2,7 @@
 
 | Area | Document |
 |---|---|
-| Retail install layout | [formats/install.md](formats/install.md) |
+| Retail install layout | [formats/install.md](formats/install.md), [formats/ini.md](formats/ini.md) (config, package lookup) |
 | Format coverage (what is left) | [formats/coverage.md](formats/coverage.md) |
 | File formats | [formats/package.md](formats/package.md), [formats/properties.md](formats/properties.md), [formats/texture.md](formats/texture.md), [formats/sound.md](formats/sound.md), [formats/font.md](formats/font.md), [formats/script.md](formats/script.md), [formats/level.md](formats/level.md), [formats/mesh.md](formats/mesh.md) |
 | Architecture decisions | [architecture/adr/](architecture/adr/README.md) |
