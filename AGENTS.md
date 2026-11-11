@@ -1,0 +1,12 @@
+# AGENTS.md
+
+Entry point for AI assistants. Read in order: [docs/ai/README_AI.md](docs/ai/README_AI.md) → the files it lists.
+
+## Hard rules
+
+1. Never commit game data (packages, extracted assets, executables, UnrealScript source taken from packages) or excerpts of it beyond what a format spec needs to explain a field ([ADR 0001](docs/architecture/adr/0001-no-game-data.md)).
+2. Never write the user's real install path, home dirs or other personal data; use `<UT99_DIR>`.
+3. Tools: Python 3 standard library only ([ADR 0002](docs/architecture/adr/0002-python-tools-cpp-engine.md)). Engine: C++17, CMake, SDL2, OpenGL 3.3 ([ADR 0003](docs/architecture/adr/0003-engine-stack.md)); respect [boundaries](docs/architecture/boundaries.md).
+4. A change that makes a doc wrong updates that doc in the same commit; finished work adds a stage to [PROJECT_MEMORY](docs/ai/PROJECT_MEMORY.md).
+5. Before committing: the quality bar in [DEVELOPMENT_GUIDE](docs/ai/DEVELOPMENT_GUIDE.md#quality-bar) passes.
+6. Mark unverified format claims as such; promote them only after checking against retail data.
