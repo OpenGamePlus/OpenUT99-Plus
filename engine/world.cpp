@@ -570,7 +570,8 @@ const LodMesh::AnimSeq* World::seq(Obj* o, const std::string& name) {
     auto it = meshes_.find(m);
     if (it == meshes_.end()) {
         std::unique_ptr<LodMesh> lod;
-        if (vm_.name_of(vm_.class_of(m)) == "LodMesh") {
+        std::string cls = vm_.name_of(vm_.class_of(m));
+        if (cls.size() == 7 && std::equal(cls.begin(), cls.end(), "lodmesh", [](char x, char y) { return std::tolower(x) == y; })) {
             try {
                 lod = std::make_unique<LodMesh>(read_lod_mesh(*m->pkg, m->pkg->exports[size_t(m->ref - 1)]));
             } catch (const std::exception& e) {

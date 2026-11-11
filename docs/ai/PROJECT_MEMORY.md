@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — navigation quality
+
+- Bots travel 2x farther (`--maps 60`: 4,084 units per bot, was 1,968; 28 deaths, was 13; no script error, ASan clean): routes skip the node the bot stands on, moves give up after a second without progress, walking slides up ramps and jumps ledges, pickups need a real touch, `LatentFloat` follows `Sleep` (at 0, bots camped at every item).
+- Found with `--maps` "still falling, by class": comparing the destination with the bot's feet made it jump at every node (nodes sit at centre height); compare centres. Fixed `LodMesh` class-name case (animation sequences were never found).
+- Still stopping bots: lifts (movers not simulated), `JumpSpot`s, teleporters reached by lift, ledges higher than a jump (DM-Codex, bot hopping in place). Next: movers.
+
 ## 2026-11-11 — combat: bots see, fight, die and respawn
 
 - Sight (`SeePlayer` / `EnemyNotVisible` every 0.2 s), traces through actor cylinders (`Trace`, `TraceActors` with several out values per `ForEach` item), foot / head regions: bots attack, fire, damage, kill, score and respawn on the retail scripts. `--maps 60`: 83 maps, no script error, 13 deaths among 289 bots (they still get stuck too often to meet much).

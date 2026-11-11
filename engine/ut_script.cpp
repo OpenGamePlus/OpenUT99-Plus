@@ -149,7 +149,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
     std::map<std::string, int> errors;
     int count = 0, failed = 0, falling = 0, in_solid = 0, pawns = 0, kills = 0;
     float travelled = 0;
-    std::map<std::string, int> solid_classes;
+    std::map<std::string, int> solid_classes, falling_classes;
     size_t actors = 0;
     for (const auto& d : std::filesystem::directory_iterator(root + "/Maps")) {
         if (d.path().extension() != ".unr") continue;
@@ -172,7 +172,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
             const ut::Value* mode = vm.prop(o, "Physics");
             const ut::Value* loc = vm.prop(o, "Location");
             const ut::Value* collide = vm.prop(o, "bCollideWorld");
-            falling += mode && mode->i == 2;
+            if (mode && mode->i == 2) falling++, falling_classes[vm.name_of(o->cls)]++;
             if (loc && collide && collide->i && w.model() && ut::point_solid(*w.model(), {loc->v[0], loc->v[1], loc->v[2]})) {
                 in_solid++;
                 solid_classes[vm.name_of(o->cls)]++;
@@ -183,6 +183,10 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
                 count, failed, actors, falling, in_solid);
     std::printf("%d pawns, %.0f units travelled (%.0f per pawn), %d deaths\n", pawns, travelled,
                 pawns ? travelled / float(pawns) : 0.f, kills);
+    if (falling) {
+        std::printf("still falling, by class:\n");
+        ranked(falling_classes, 8);
+    }
     if (in_solid) {
         std::printf("inside solid, by class:\n");
         ranked(solid_classes, 8);

@@ -401,7 +401,7 @@ static void test_read_class() {
 // 22 latent native Sleep(float) (256); 24 auto state S: Get() returns 99; code Begin: X = 7; Sleep(1); X = 9; stop.
 // 27 Call(): return Get(), a virtual call that sees the state.
 // 29 iterator native Three(out int V, out int U) (300); 31 Sum(): S = 1; ForEach Three(V, U) S = S * U; return S.
-// 50 Sum's local U; 51 Three's parameter U.
+// 50 Sum's local U; 51 Three's parameter U; 52 LatentFloat of T.
 // 35-37 TimerRate, TimerCounter, bTimerLoop of T; 38 Timer(): X = X * 2.
 // 39-47 Location, Velocity, Acceleration, Physics, bCollideActors, bCollideWorld, CollisionRadius, CollisionHeight,
 // GroundSpeed of T; 48 Touch(Other): X = X * 2.
@@ -530,6 +530,7 @@ static Package vm_package() {
     add(-8, 48, "Other", prop(0, kParm));
     add(-2, 31, "U", prop(0, 0));
     add(-2, 29, "U", prop(0, kParm | kOutParm));
+    add(-4, 1, "LatentFloat", prop(0, 0));
     return p;
 }
 
@@ -559,8 +560,9 @@ static void test_vm() {
     Value& x = self->vars[vm.object(p, 17)][0];
     vm.tick(self, 0.1f);
     assert(x.i == 7 && self->code_active);                             // asleep after X = 7
+    assert(std::fabs(vm.prop(self, "LatentFloat")->f - 1) < 1e-4f);   // scripts read the sleep time left here
     vm.tick(self, 0.5f);
-    assert(x.i == 7);
+    assert(x.i == 7 && std::fabs(vm.prop(self, "LatentFloat")->f - 0.5f) < 1e-4f);
     vm.tick(self, 0.6f);
     assert(x.i == 9 && !self->code_active);                            // woke after 1 s, ran to stop
     assert(!vm.goto_state(self, "Missing") && vm.goto_state(self, "None") && !self->state);
@@ -611,6 +613,18 @@ static void test_vm() {
     assert(walker->vars[vm.object(p, 17)][0].i == 10 && other->vars[vm.object(p, 17)][0].i == 10);  // both touched once
     assert(at[0] > 79 && at[0] < 80.5f && std::fabs(at[2] - 20) < 0.5f && vm.prop(walker, "Physics")->i == 1);
     assert(w.errors.empty());
+    // A ramp rising 30 degrees from x = 100 (solid below it): the walker goes up it instead of stopping.
+    Model ramp;
+    Node flat{}, slope{};
+    flat.plane[2] = 1, flat.back = -1, flat.front = 1;
+    slope.plane[0] = -0.5f, slope.plane[2] = 0.8660254f, slope.plane[3] = -50, slope.back = -1, slope.front = -1;
+    ramp.nodes = {flat, slope};
+    w.set_model(ramp);
+    float* wl = vm.prop(walker, "Location")->v;
+    wl[0] = 0, wl[1] = 0, wl[2] = 20;
+    vm.prop(walker, "bCollideActors")->i = 0;
+    for (int k = 0; k < 20; k++) w.tick(0.05f);
+    assert(wl[0] > 150 && wl[2] > 40 && !point_solid(ramp, {wl[0], wl[1], wl[2]}));
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);

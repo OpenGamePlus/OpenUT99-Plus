@@ -134,6 +134,11 @@ Obj* World::route(Obj* pawn, const std::function<float(Obj*, float)>& weight, fl
     std::vector<Obj*> path;
     for (Obj* n = goal; n && path.size() < 10000; n = prev.count(n) ? prev[n] : nullptr) path.push_back(n);
     std::reverse(path.begin(), path.end());
+    // Already standing on the first node: the next one is the step (else the pawn "arrives" there forever).
+    Vec3 first = vec_of(vm_.prop(path.front(), "Location"));
+    const Value* nr = vm_.prop(path.front(), "CollisionRadius");
+    if (path.size() > 1 && dist2d(at, first) < radius + (nr ? nr->f : 0) + 8 && std::fabs(at.z - first.z) < height + 40)
+        path.erase(path.begin());
     if (std::vector<Value>* cache = vm_.prop_array(pawn, "RouteCache"))
         for (size_t k = 0; k < cache->size(); k++) (*cache)[k].o = k < path.size() ? path[k] : nullptr;
     return path.front();
@@ -159,6 +164,12 @@ void World::walk(Obj* o, float dt) {
     v[2] = 0;
     Vec3 delta{v[0] * dt, v[1] * dt, 0};
     Hit h = move(o, delta);
+    for (int k = 0; k < 2 && h.hit && h.normal.z >= 0.7f; k++) {  // a ramp: go on along its surface
+        Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
+        float dot = rest.x * h.normal.x + rest.y * h.normal.y;
+        delta = {rest.x - dot * h.normal.x, rest.y - dot * h.normal.y, -dot * h.normal.z};
+        h = move(o, delta);
+    }
     if (h.hit && h.normal.z < 0.7f) {  // blocked: step up (25, unverified), else slide along the wall
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
         Value saved = *loc;
@@ -169,6 +180,16 @@ void World::walk(Obj* o, float dt) {
             *loc = saved;
             float dot = rest.x * h.normal.x + rest.y * h.normal.y;
             move(o, {rest.x - dot * h.normal.x, rest.y - dot * h.normal.y, 0});
+            // A ledge higher than a step with the destination above it: jump if the pawn can (unverified rule).
+            const Value* dest = vm_.prop(o, "Destination");
+            const Value* can = vm_.prop(o, "bCanJump");
+            const Value* jz = vm_.prop(o, "JumpZ");
+            // Navigation points sit at a standing pawn's centre height, so compare centres.
+            if (alen > 0 && dest && can && can->i && jz && jz->f > 0 && dest->v[2] > loc->v[2] + 25) {
+                v[2] = jz->f;
+                vm_.prop(o, "Physics")->i = 2;
+                return;
+            }
         }
     }
     Hit down = move(o, {0, 0, -27});  // stay on the floor
@@ -269,8 +290,11 @@ void World::register_ai() {
             }
             if (Value* d = vm_.prop(self, "Destination")) d->v[0] = to.x, d->v[1] = to.y, d->v[2] = to.z;
             Value* acc = vm_.prop(self, "Acceleration");
-            bool reached = dist2d(at, to) < radius(self) + radius(target) + 8 &&
-                           std::fabs(at.z - to.z) < height(self) + height(target) + 40;
+            // A target that collides (a pickup) is reached when the cylinders touch; others (path nodes) loosely.
+            const Value* tc = target ? vm_.prop(target, "bCollideActors") : nullptr;
+            bool touchable = tc && tc->i;
+            bool reached = dist2d(at, to) < radius(self) + radius(target) + (touchable ? 0 : 8) &&
+                           std::fabs(at.z - to.z) < height(self) + height(target) + (touchable ? 0 : 40);
             if (reached || time - start > timeout || deleted_.count(self)) {
                 if (acc) acc->v[0] = acc->v[1] = acc->v[2] = 0;
                 return true;
@@ -278,8 +302,8 @@ void World::register_ai() {
             if (acc) acc->v[0] = to.x - at.x, acc->v[1] = to.y - at.y, acc->v[2] = 0;
             return false;
         };
-        steer();
-        self->wait = steer;
+        if (steer()) self->sleep = 0;  // already there: still a latent call, it ends on the next tick
+        else self->wait = steer;
     };
     vm.add_native("MoveTo", [move_to](Obj* self, std::vector<Value*>& a, Value&) {
         Vec3 d = vec_of(a[0]);

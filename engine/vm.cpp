@@ -695,6 +695,7 @@ void Vm::tick(Obj* o, float dt) {
     if (!o->code_active) return;
     if (o->sleep >= 0) {
         o->sleep -= dt;
+        if (Value* lf = prop(o, "LatentFloat")) lf->f = std::max(0.f, o->sleep);  // Actor: what scripts read
         if (o->sleep > 0) return;
         o->sleep = -1;
     }
@@ -1325,8 +1326,10 @@ Vm::Vm(PackageSet* packages) : packages_(packages) {
     by_name_["getstatename"] = [this](Obj* self, std::vector<Value*>&, Value& r) {
         r.s = self && self->state ? name_of(self->state) : "None";
     };
-    NATIVE(Sleep) {  // latent: state code resumes once the time has passed (Sleep(0): next tick)
-        if (self) self->sleep = std::max(0.f, a[0]->f);
+    by_name_["sleep"] = [this](Obj* self, std::vector<Value*>& a, Value&) {  // latent: resumes once the time has passed
+        if (!self) return;
+        self->sleep = std::max(0.f, a[0]->f);  // Sleep(0): next tick
+        if (Value* lf = prop(self, "LatentFloat")) lf->f = self->sleep;
     };
     // Log
     by_name_["log"] = [this](Obj*, std::vector<Value*>& a, Value&) {
