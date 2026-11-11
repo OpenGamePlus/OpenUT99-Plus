@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "level.h"
+#include "lighting.h"
 #include "packages.h"
 #include "texture.h"
 
@@ -24,6 +25,9 @@ struct Spawn {
 
 struct Scene {
     std::vector<Batch> batches;
+    Image lightmap;          // atlas of all lightmaps, RGB = light / 2 (shader doubles it); texel (0, 0) = full bright
+    bool has_sky = false;
+    Vec3 sky_pos{};          // SkyZoneInfo location: FakeBackdrop surfaces show the level seen from here
     std::vector<Spawn> starts;
     size_t surfaces = 0, skipped = 0, missing_textures = 0;
 };

@@ -49,6 +49,19 @@ Surface: texture ref, poly flags u32, base (point idx), normal, texture U, textu
 
 Lightmap: data offset i32 (into light bits), pan vector, U clamp, V clamp (compact), U scale, V scale (f32), first light i32 (index into `lights`). Its data is, for each light in `lights[first light ..]` up to the 0 entry, a shadow bitmap of V clamp rows × ceil(U clamp / 8) bytes, one bit per luxel. The final light colour is computed at run time from the light actors' properties (brightness, hue, radius, effect): engine behaviour, not data.
 
+## Lightmap coordinates and shadow bits (verified)
+
+- Luxel (i, j) of a lightmap sits at texture coordinates U = pan.x + i × U scale, V = pan.y + j × V scale (texel units, measured from the surface base with its texture axes, without the surface pan). `pan` is the polygon's minimum (U, V) minus 0.1, and (U max − U min) / U scale + 1 = U clamp: luxels sample the polygon's corners and edges.
+- Shadow bits are LSB first within each byte. On DM-Deck16][, 99.99 % of set bits face their light (N · L > 0) and 99.85 % lie within 25 × (LightRadius + 1) units of it; MSB-first order or a smaller radius fits worse.
+
+## Lighting model used by the engine (unverified)
+
+Engine behaviour, not data; chosen to look plausible, to be calibrated against the original: luxel colour = zone ambient (`AmbientBrightness`, `AmbientHue`, `AmbientSaturation` of the zone's ZoneInfo) + Σ over lights whose bit is set of colour(LightHue, LightSaturation, LightBrightness) × (1 − (d / (25 × (LightRadius + 1)))²), no N · L term; the texture is multiplied by 2 × luxel colour. Missing light properties take Engine.Light defaults (brightness 64, saturation 255 = white, radius 64). Some maps rely on lights with `LightBrightness 0` and radius 255 (DM-Deck16][ spawn corridor), which this model leaves black.
+
+## Sky
+
+`FakeBackdrop` surfaces are windows into the sky zone: the engine first draws the level seen from the `SkyZoneInfo` actor (same view direction), then draws the level normally with backdrop surfaces writing depth only. Verified visually on CTF-Face (star field and nebula behind the towers).
+
 ## Drawing a surface
 
 Texture coordinates of a point P on a node's polygon, in texels: U = (P − base) · texture U + pan U, V = (P − base) · texture V + pan V; divide by the texture's size for 0..1 coordinates. Verified visually on three maps (`ut_mapview --shot`): walls and floors line up, text on posters reads correctly (UE world is left-handed: X forward, Y right, Z up).
@@ -97,5 +110,5 @@ Names from public UE1 documentation, unverified against behaviour.
 
 ## Open
 
-- Light colour model (light actor properties → luxel colour) and zone fog / ambient.
+- Calibrating the light colour model against the original; light effects (pulse, flicker, spot cones), dynamic lights, zone fog, sky zone rotation.
 - Meaning of node flags and reach flags bits.

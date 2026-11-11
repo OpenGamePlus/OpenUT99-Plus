@@ -13,19 +13,25 @@ namespace ut {
 static const char* kVert = R"(#version 330 core
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec2 uv;
+layout(location = 2) in vec2 luv;
 uniform mat4 mvp;
 out vec2 v_uv;
-void main() { v_uv = uv; gl_Position = mvp * vec4(pos, 1.0); })";
+out vec2 v_luv;
+void main() { v_uv = uv; v_luv = luv; gl_Position = mvp * vec4(pos, 1.0); })";
 
 static const char* kFrag = R"(#version 330 core
 in vec2 v_uv;
+in vec2 v_luv;
 uniform sampler2D tex;
+uniform sampler2D lightmap;
 uniform bool masked;
+uniform bool lit;
 out vec4 colour;
 void main() {
     vec4 c = texture(tex, v_uv);
     if (masked && c.a < 0.5) discard;
-    colour = vec4(c.rgb, 1.0);
+    vec3 light = lit ? 2.0 * texture(lightmap, v_luv).rgb : vec3(1.0);
+    colour = vec4(c.rgb * light, 1.0);
 })";
 
 struct GpuBatch {
@@ -35,9 +41,12 @@ struct GpuBatch {
 };
 
 struct Renderer::Impl {
-    GLuint prog = 0;
-    GLint mvp = -1, masked = -1;
+    GLuint prog = 0, lightmap = 0;
+    GLint mvp = -1, masked = -1, lit = -1;
     std::vector<GpuBatch> batches;
+    bool has_sky = false;
+    Vec3 sky_pos{};
+    void pass(const Camera& cam, int w, int h, bool backdrop_depth_only);
 };
 
 static GLuint compile(GLenum type, const char* src) {
@@ -61,6 +70,19 @@ Renderer::Renderer(const Scene& scene) : p_(new Impl) {
     glLinkProgram(p_->prog);
     p_->mvp = glGetUniformLocation(p_->prog, "mvp");
     p_->masked = glGetUniformLocation(p_->prog, "masked");
+    p_->lit = glGetUniformLocation(p_->prog, "lit");
+    glUseProgram(p_->prog);
+    glUniform1i(glGetUniformLocation(p_->prog, "tex"), 0);
+    glUniform1i(glGetUniformLocation(p_->prog, "lightmap"), 1);
+    p_->has_sky = scene.has_sky, p_->sky_pos = scene.sky_pos;
+    glGenTextures(1, &p_->lightmap);
+    glBindTexture(GL_TEXTURE_2D, p_->lightmap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, scene.lightmap.width, scene.lightmap.height, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 scene.lightmap.rgba.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     for (const Batch& b : scene.batches) {
         GpuBatch g;
         g.flags = b.flags;
@@ -74,6 +96,8 @@ Renderer::Renderer(const Scene& scene) : p_(new Impl) {
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
         glGenTextures(1, &g.tex);
         glBindTexture(GL_TEXTURE_2D, g.tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, b.image.width, b.image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, b.image.rgba.data());
@@ -90,6 +114,7 @@ Renderer::~Renderer() {
         glDeleteBuffers(1, &g.vbo);
         glDeleteVertexArrays(1, &g.vao);
     }
+    glDeleteTextures(1, &p_->lightmap);
     glDeleteProgram(p_->prog);
 }
 
@@ -115,26 +140,44 @@ void Renderer::draw(const Camera& cam, int w, int h) {
     glViewport(0, 0, w, h);
     glClearColor(0.f, 0.f, 0.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    if (p_->has_sky) {  // the sky zone seen from its SkyZoneInfo, behind everything
+        Camera sky = cam;
+        sky.pos = p_->sky_pos;
+        p_->pass(sky, w, h, true);
+        glClear(GL_DEPTH_BUFFER_BIT);
+    }
+    p_->pass(cam, w, h, true);
+}
+
+// backdrop_depth_only: FakeBackdrop surfaces write depth but no colour, so the sky drawn before shows through them.
+void Renderer::Impl::pass(const Camera& cam, int w, int h, bool backdrop_depth_only) {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);  // shortcut: BSP winding not checked yet, draw both sides
-    glUseProgram(p_->prog);
-    float mvp[16];
-    view_projection(cam, float(w) / float(h), mvp);
-    glUniformMatrix4fv(p_->mvp, 1, GL_FALSE, mvp);
+    glUseProgram(prog);
+    float m[16];
+    view_projection(cam, float(w) / float(h), m);
+    glUniformMatrix4fv(mvp, 1, GL_FALSE, m);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, lightmap);
+    glActiveTexture(GL_TEXTURE0);
     for (int pass = 0; pass < 2; pass++) {  // 0: opaque and masked, 1: translucent / modulated
         if (pass == 1) {
             glEnable(GL_BLEND);
             glDepthMask(GL_FALSE);
         }
-        for (const GpuBatch& g : p_->batches) {
+        for (const GpuBatch& g : batches) {
             bool blended = g.flags & (PF_Translucent | PF_Modulated);
             if (blended != (pass == 1)) continue;
             if (g.flags & PF_Modulated) glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
             else glBlendFunc(GL_ONE, GL_ONE);
-            glUniform1i(p_->masked, g.flags & PF_Masked ? 1 : 0);
+            bool backdrop = g.flags & PF_FakeBackdrop;
+            if (backdrop && backdrop_depth_only && has_sky) glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+            glUniform1i(masked, g.flags & PF_Masked ? 1 : 0);
+            glUniform1i(lit, blended ? 0 : 1);
             glBindTexture(GL_TEXTURE_2D, g.tex);
             glBindVertexArray(g.vao);
             glDrawArrays(GL_TRIANGLES, 0, g.count);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         }
     }
     glDepthMask(GL_TRUE);

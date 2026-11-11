@@ -53,7 +53,7 @@ static void read_model_into(Reader& r, Model& m) {
     }
     r.i32();  // shared sides
     for (int32_t i = r.i32(); i-- > 0;) {
-        r.index();
+        m.zone_actors.push_back(r.index());
         r.need(16);
         r.pos += 16;  // zone actor, connectivity, visibility
     }
@@ -141,7 +141,7 @@ std::vector<Vertex> node_triangles(const Model& m, const Node& n, int usize, int
     const Vec3 &base = m.points[size_t(s.base)], &tu = m.vectors[size_t(s.texture_u)], &tv = m.vectors[size_t(s.texture_v)];
     auto vertex = [&](int i) {
         const Vec3& p = m.points[size_t(m.verts[size_t(n.vert_pool + i)].point)];
-        return Vertex{p.x, p.y, p.z, (dot_sub(p, base, tu) + s.pan_u) / float(usize), (dot_sub(p, base, tv) + s.pan_v) / float(vsize)};
+        return Vertex{p.x, p.y, p.z, (dot_sub(p, base, tu) + s.pan_u) / float(usize), (dot_sub(p, base, tv) + s.pan_v) / float(vsize), 0, 0};
     };
     std::vector<Vertex> out;
     for (int i = 2; i < n.num_vertices; i++) {

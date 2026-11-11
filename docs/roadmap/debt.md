@@ -16,5 +16,7 @@
 
 ## Known gaps
 
+- Light colour model uncalibrated (falloff curve, no N·L, ×2 texture modulation); zero-brightness radius-255 lights leave areas black (DM-Deck16][ spawn). Needs same-spot screenshots of the original.
+
 - Package and object flag bits not named ([package.md](../formats/package.md)).
 - Only patch 469e checked; packages from version 436 installs not yet compared.

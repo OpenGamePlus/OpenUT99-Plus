@@ -43,6 +43,7 @@ struct Model {
     std::vector<LightMap> lightmaps;
     std::vector<uint8_t> light_bits;
     std::vector<int32_t> lights;
+    std::vector<int32_t> zone_actors;  // object refs, index = zone number
     int32_t polys = 0;
 };
 
@@ -61,7 +62,7 @@ Model read_model(const Package& p, const Export& e);  // also returns *end-check
 Level read_level(const Package& p, const Export& e);
 size_t model_end(const Package& p, const Export& e);  // offset after the Model data (for cross-checks)
 
-struct Vertex { float x, y, z, u, v; };
+struct Vertex { float x, y, z, u, v, lu = 0, lv = 0; };  // lu, lv: lightmap atlas coordinates
 
 // Triangle fan of a BSP node's polygon; UVs in texture units (texel coordinate / texture size).
 std::vector<Vertex> node_triangles(const Model& m, const Node& n, int usize, int vsize);

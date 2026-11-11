@@ -1,4 +1,5 @@
 // ut_mapview <UT99_DIR> MAP [--shot out.png] [--at x y z yaw pitch]   (yaw, pitch in degrees)
+// ut_mapview ... --lightmap out.png writes the baked lightmap atlas
 // ut_mapview <UT99_DIR> --check                                     load every map without a window
 // Controls: right mouse button + mouse to look, WASD to fly (shift: faster), Esc to quit.
 #include <SDL.h>
@@ -13,6 +14,7 @@
 
 #include "config.h"
 #include "packages.h"
+#include "png.h"
 #include "render.h"
 #include "scene.h"
 #include "vfs.h"
@@ -51,11 +53,12 @@ int main(int argc, char** argv) {
     try {
         Vfs vfs(root, read_ini(root + "/System/UnrealTournament.ini"));
         if (!std::strcmp(argv[2], "--check")) return check_all(root, vfs);
-        std::string shot;
+        std::string shot, lightmap_png;
         Camera cam;
         bool at = false;
         for (int i = 3; i < argc; i++) {
             if (!std::strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
+            else if (!std::strcmp(argv[i], "--lightmap") && i + 1 < argc) lightmap_png = argv[++i];
             else if (!std::strcmp(argv[i], "--at") && i + 5 < argc) {
                 cam.pos = {std::strtof(argv[i + 1], nullptr), std::strtof(argv[i + 2], nullptr), std::strtof(argv[i + 3], nullptr)};
                 cam.yaw = std::strtof(argv[i + 4], nullptr) * 3.14159265f / 180.f;
@@ -67,6 +70,7 @@ int main(int argc, char** argv) {
         Scene scene = load_scene(set, argv[2]);
         std::printf("%s: %zu surfaces in %zu batches, %zu without texture, %zu player starts\n", argv[2], scene.surfaces,
                     scene.batches.size(), scene.missing_textures, scene.starts.size());
+        if (!lightmap_png.empty()) write_png(lightmap_png, scene.lightmap.width, scene.lightmap.height, scene.lightmap.rgba);
         if (!at && !scene.starts.empty()) {
             const Spawn& s = scene.starts[0];
             cam.pos = {s.pos.x, s.pos.y, s.pos.z + 30.f};  // shortcut: eye height guessed (collision height 39 - 9)

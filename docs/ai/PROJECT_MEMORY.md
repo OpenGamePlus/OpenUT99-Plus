@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-10 — lightmaps and sky
+
+- Lightmap layout pinned with statistics: luxels sample the polygon in texture space from `pan` (U min − 0.1) by U/V scale; shadow bits LSB first; set bits lie within 25 × (LightRadius + 1) of their light. Baked into one atlas per map; CTF-Face shows its star-field sky through FakeBackdrop surfaces drawn depth-only after a pass from the SkyZoneInfo.
+- Light intensity is a guess: with N·L the median lit luxel was 0.18 (too dark), without it 0.34; kept without, flagged in debt. Deck16][ spawn is lit only by brightness-0 lights and stays black: compare with the original.
+
 ## 2026-11-10 — first level viewer
 
 - `ut_mapview`: C++ Model reader (0 differences vs Python on all maps), cross-package texture resolution, P8 textures, BSP surfaces batched per texture, OpenGL 3.3. All 83 maps load; the only untextured surfaces (88) have texture `None` in the data. Shots of Deck16][, Face and Morpheus look right, text unmirrored.

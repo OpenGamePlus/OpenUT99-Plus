@@ -11,6 +11,7 @@
 
 #include "config.h"
 #include "level.h"
+#include "lighting.h"
 #include "packages.h"
 #include "png.h"
 #include "texture.h"
@@ -257,7 +258,53 @@ static void test_png() {
     assert(std::memcmp(&png[png.size() - 12], iend, 12) == 0);
 }
 
+// Floor surface on z = 0 with texture U = X, V = Y; lightmap 3x2 luxels, 16 units apart, starting at (10, 20).
+static Model lit_floor() {
+    Model m;
+    m.points = {{0, 0, 0}};
+    m.vectors = {{0, 0, 1}, {1, 0, 0}, {0, 1, 0}};
+    Surf s{};
+    s.base = 0, s.normal = 0, s.texture_u = 1, s.texture_v = 2, s.light_map = 0;
+    m.surfs = {s};
+    LightMap lm{};
+    lm.pan = {10, 20, 0};
+    lm.uclamp = 3, lm.vclamp = 2, lm.uscale = 16, lm.vscale = 16, lm.light_actors = 0;
+    m.lightmaps = {lm};
+    m.lights = {-1, -2, 0};  // two lights, then the terminator
+    // light 0: rows of ceil(3/8) = 1 byte; row 0 bits 0 and 2 lit, row 1 bit 1 lit. light 1: all dark.
+    m.light_bits = {0x05, 0x02, 0x00, 0x00};
+    return m;
+}
+
+static void test_luxels() {
+    Model m = lit_floor();
+    Vec3 p = luxel_position(m, m.surfs[0], m.lightmaps[0], 2, 1);
+    assert(p.x == 10 + 32 && p.y == 20 + 16 && p.z == 0);
+    assert(lightmap_lights(m, m.lightmaps[0]) == 2);
+    assert(shadow_bit(m, m.lightmaps[0], 0, 0, 0) && !shadow_bit(m, m.lightmaps[0], 0, 1, 0));
+    assert(shadow_bit(m, m.lightmaps[0], 0, 2, 0) && shadow_bit(m, m.lightmaps[0], 0, 1, 1));
+    assert(!shadow_bit(m, m.lightmaps[0], 1, 0, 0));
+}
+
+static void test_light_colour() {
+    Vec3 white = light_colour(0, 255, 255);  // saturation 255 = no colour
+    assert(white.x == 1.f && white.y == 1.f && white.z == 1.f);
+    Vec3 red = light_colour(0, 0, 255);
+    assert(red.x == 1.f && red.y == 0.f && red.z == 0.f);
+}
+
+static void test_atlas() {
+    Atlas a(16);
+    int x0, y0, x1, y1;
+    assert(a.place(10, 4, &x0, &y0) && a.place(10, 4, &x1, &y1));
+    assert(x0 == 0 && y0 == 0 && y1 > y0);  // second does not fit on the first shelf (10 + 10 > 16)
+    assert(!a.place(17, 1, &x1, &y1));
+}
+
 int main() {
+    test_luxels();
+    test_light_colour();
+    test_atlas();
     test_resolve_import();
     test_png();
     test_texture_rgba();

@@ -16,7 +16,8 @@ engine/
   packages.{h,cpp}   loaded packages, cross-package references
   texture.{h,cpp}    Palette + P8 Texture -> RGBA
   level.{h,cpp}      Model (BSP), Level, surface triangles
-  scene.{h,cpp}      map -> texture batches, player starts
+  lighting.{h,cpp}   lightmap luxels, shadow bits, light colours, atlas
+  scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, player starts
   render.{h,cpp}     OpenGL 3.3 renderer (library ut_render)
   png.{h,cpp}        PNG encoder for screenshots
   mapview.cpp        ut_mapview: free-fly viewer, --shot, --check
@@ -52,7 +53,7 @@ tools/
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
-| Engine (C++) | package + property + Model reader (0 differences vs Python on all 396 packages); ini + package lookup (0 missing dependencies); level viewer: textured BSP, all 83 maps load, full bright (no lightmaps yet) |
+| Engine (C++) | package + property + Model reader (0 differences vs Python on all 396 packages); ini + package lookup (0 missing dependencies); level viewer: textured BSP with baked lightmaps (colour model uncalibrated) and sky zones, all 83 maps load |
 | Network | not started |
 
 ## Commands
@@ -63,7 +64,7 @@ cmake -S . -B build && cmake --build build && ctest --test-dir build   # engine 
 python3 tools/compare_engine.py <UT99_DIR> build/ut_dump      # C++ vs Python, must say "0 differ"
 build/ut_dump --deps <UT99_DIR>                 # must say "0 missing dependencies" (same as uini.py --deps)
 build/ut_mapview <UT99_DIR> --check             # every map loads: "83 maps, 0 errors"
-build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch]   # RMB + mouse look, WASD fly
+build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # RMB + mouse look, WASD fly
 python3 tools/check_docs.py                    # doc checks
 python3 tools/upkg.py FILE [--names|--imports|--exports]
 python3 tools/uprops.py FILE OBJECT              # properties of one export
