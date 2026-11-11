@@ -1,7 +1,7 @@
 # 0006 — Execute the game's UnrealScript bytecode in a VM
 
-- Status: Proposed (waiting for the maintainer)
-- Date: 2026-11-10
+- Status: Accepted
+- Date: 2026-11-10 (accepted 2026-11-11)
 
 ## Context
 
@@ -21,7 +21,7 @@ Options:
 1. **VM**: load classes from the user's packages and run their bytecode; implement in C++ only the native functions (≈ 383) and native classes' behaviour (actors, physics, rendering, networking).
 2. **Native reimplementation**: rewrite the game classes (≈ 9,000 functions) in C++.
 
-## Decision (proposed)
+## Decision
 
 Option 1, a bytecode VM.
 

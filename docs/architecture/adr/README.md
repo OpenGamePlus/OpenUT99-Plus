@@ -9,7 +9,7 @@ Accepted ADRs are never edited; a later ADR marks them `Superseded by NNNN`.
 | [0003](0003-engine-stack.md) | Engine stack: C++17, CMake, SDL2, OpenGL 3.3 | Accepted |
 | [0004](0004-clean-room-sources.md) | Clean-room: what may be studied and how | Accepted |
 | [0005](0005-network-compatibility.md) | Interoperate with the original game over the network | Accepted |
-| [0006](0006-unrealscript-execution.md) | Execute the game's UnrealScript bytecode in a VM | Proposed |
+| [0006](0006-unrealscript-execution.md) | Execute the game's UnrealScript bytecode in a VM | Accepted |
 
 ## Template (MADR-lite)
 

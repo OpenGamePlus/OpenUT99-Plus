@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — ADR 0006 accepted; repository published
+
+- The maintainer accepted ADR 0006: the engine runs the retail UnrealScript bytecode in a VM and implements only the native functions in C++. Phase C starts with the VM.
+- Repository public at `github.com/OpenGamePlus/OpenUT99-Plus`; the overnight branch was fast-forwarded into `main`.
+
 ## 2026-11-11 — review fixes: untrusted package data
 
 - A fresh review plus an ASan/UBSan build found memory errors on retail and crafted data: lightmaps with `first light = −1` read before the light list (retail, DM-Morpheus), negative export offsets wrapped past the bounds check, lightmap fields and surface normals were unvalidated, bytecode recursion was unbounded, and a dangling property pointer in the actor lookup. All fixed with tests; `validate_model` now guards every index the engine follows.
