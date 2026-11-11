@@ -5,6 +5,7 @@
 | Module | Role | May use |
 |---|---|---|
 | `tools/upkg.py` | Unreal package reader: header, names, imports, exports | std only |
+| `tools/uprops.py` | tagged properties, state frame | `upkg` |
 | `tools/check_docs.py` | documentation checker | std only |
 
 The engine (`engine/`, C++) does not exist yet; its modules get rows here as they are added.

@@ -12,7 +12,7 @@
 ## Quality bar
 
 - Tests and doc checks from the [SYSTEM_SUMMARY commands](SYSTEM_SUMMARY.md#commands) pass.
-- A reader change still parses every retail package (run the reader over `<UT99_DIR>` locally).
+- A reader change still parses every retail package: `python3 tools/uprops.py --sweep <UT99_DIR>` reports the same counts as the specs, "classes with both: none".
 
 ## Commits
 
