@@ -193,7 +193,7 @@ void World::walk(Obj* o, float dt) {
         delta = {rest.x - dot * h.normal.x, rest.y - dot * h.normal.y, -dot * h.normal.z};
         h = move(o, delta);
     }
-    if (h.hit && h.normal.z < 0.7f) {  // blocked: step up (25, unverified), else slide along the wall
+    if (h.hit) {  // blocked (a wall, or a ramp foot the slide could not climb): step up (25, unverified), else slide
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
         Value saved = *loc;
         move(o, {0, 0, 25});
