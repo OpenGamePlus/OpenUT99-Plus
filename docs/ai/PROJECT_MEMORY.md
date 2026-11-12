@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-11 — the match in the viewer
+
+- `ut_mapview MAP --play`: the world runs in the window; `engine/play_view.*` draws live actors each frame (LodMesh actors at their animation frame, blended, and mover brushes); drag to look, F follows a bot; `--play --shot --time S --follow` for checks. The LodMesh reader now keeps every frame.
+- Watching it found what the meters missed: player meshes lay down (RotOrigin was applied inverted; fixed in both views); bots fell into Deck16's slime and Morpheus' void and never died: `FootZoneChange` ran after the region was updated (the script compares the old zone, so `PainTime` never started), `PainTimer` and the zones' `ActorEntered` / `ActorLeaving` were never sent.
+- Relative mouse mode and pointer warping turn the camera endlessly under WSLg: drag-to-look instead. Next: bots stuck in corners (seen in the viewer), blocking between actors.
+
 ## 2026-11-11 — movers: lifts and doors
 
 - `engine/world_mover.cpp`: mover brushes (their own BSP, placed by Location, Rotation and PrePivot, checked on lift shafts) block traces and moves; `PHYS_MovingBrush` glides between keyframes for the retail `Mover` script; bases (`Attach` / `Detach`, riders carried), `EncroachingOn`, `Bump` + `HitWall` on movers, routes calling `SpecialHandling`. A DM-Deck16][ bot waits, rides a lift up and walks on; `--maps 60`: 4,649 units per bot (was 4,084), 47 deaths, no script error.

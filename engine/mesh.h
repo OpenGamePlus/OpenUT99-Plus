@@ -11,7 +11,8 @@ namespace ut {
 Vec3 unpack_vert(uint32_t v);  // X 11, Y 11, Z 10 bits, signed
 
 struct LodMesh {
-    std::vector<Vec3> frame0;  // first animation frame: special verts first, then model verts
+    std::vector<Vec3> verts;   // every animation frame in turn, each frame_verts long: special verts, then model verts
+    int frame_verts = 0, frames = 0;
     int special_verts = 0;
     struct Face { uint16_t wedge[3], material; };
     struct Wedge { uint16_t vertex; uint8_t u, v; };

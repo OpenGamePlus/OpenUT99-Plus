@@ -68,4 +68,4 @@ Ref bones (array × (name, flags u32, parent i32)), moves (array × (root speed 
 
 ## Engine
 
-`engine/mesh.*` reads LodMesh frame 0, faces, wedges, materials and the animation sequences (name, group, start frame, frame count, rate); the world uses the sequences for `PlayAnim` / `LoopAnim` timing and `GetAnimGroup`.
+`engine/mesh.*` reads every LodMesh frame (frames follow each other, `frame_verts` each; checked visually: frames 0 and 40 of the player meshes are whole bodies), faces, wedges, materials and the animation sequences (name, group, start frame, frame count, rate); the world uses the sequences for `PlayAnim` / `LoopAnim` timing and `GetAnimGroup`, and `ut_mapview --play` draws actors at frame `start + AnimFrame × frames` (blending to the next frame). Placement: world = Location + PrePivot + R(Rotation) · R(RotOrigin) · ((v − Origin) × Scale × DrawScale); with RotOrigin applied this way the player meshes (RotOrigin yaw 90°, roll −90°) stand up and face their Rotation (the inverse lays them down; checked visually).

@@ -3,6 +3,7 @@
 #include <epoxy/gl.h>
 
 #include <cmath>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
@@ -46,8 +47,37 @@ struct Renderer::Impl {
     std::vector<GpuBatch> batches;
     bool has_sky = false;
     Vec3 sky_pos{};
-    void pass(const Camera& cam, int w, int h, bool backdrop_depth_only);
+    GLuint live_vao = 0, live_vbo = 0;
+    std::map<const Image*, GLuint> live_tex;  // textures of live batches, uploaded on first use
+    void pass(const Camera& cam, int w, int h, bool backdrop_depth_only, const std::vector<LiveBatch>* live);
+    GLuint texture_of(const Image* image);
 };
+
+static void vertex_layout() {
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+}
+
+static GLuint upload_texture(const Image& image) {
+    GLuint t = 0;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.rgba.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    return t;
+}
+
+GLuint Renderer::Impl::texture_of(const Image* image) {
+    auto it = live_tex.find(image);
+    if (it == live_tex.end()) it = live_tex.emplace(image, upload_texture(*image)).first;
+    return it->second;
+}
 
 static GLuint compile(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
@@ -92,20 +122,15 @@ Renderer::Renderer(const Scene& scene) : p_(new Impl) {
         glGenBuffers(1, &g.vbo);
         glBindBuffer(GL_ARRAY_BUFFER, g.vbo);
         glBufferData(GL_ARRAY_BUFFER, GLsizeiptr(b.verts.size() * sizeof(Vertex)), b.verts.data(), GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
-        glGenTextures(1, &g.tex);
-        glBindTexture(GL_TEXTURE_2D, g.tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, b.image.width, b.image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, b.image.rgba.data());
-        glGenerateMipmap(GL_TEXTURE_2D);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        vertex_layout();
+        g.tex = upload_texture(b.image);
         p_->batches.push_back(g);
     }
+    glGenVertexArrays(1, &p_->live_vao);
+    glBindVertexArray(p_->live_vao);
+    glGenBuffers(1, &p_->live_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, p_->live_vbo);
+    vertex_layout();
 }
 
 Renderer::~Renderer() {
@@ -114,6 +139,9 @@ Renderer::~Renderer() {
         glDeleteBuffers(1, &g.vbo);
         glDeleteVertexArrays(1, &g.vao);
     }
+    for (auto& [image, t] : p_->live_tex) glDeleteTextures(1, &t);
+    glDeleteBuffers(1, &p_->live_vbo);
+    glDeleteVertexArrays(1, &p_->live_vao);
     glDeleteTextures(1, &p_->lightmap);
     glDeleteProgram(p_->prog);
 }
@@ -136,21 +164,21 @@ static void view_projection(const Camera& c, float aspect, float out[16]) {
     for (int i = 0; i < 16; i++) out[i] = m[i];
 }
 
-void Renderer::draw(const Camera& cam, int w, int h) {
+void Renderer::draw(const Camera& cam, int w, int h, const std::vector<LiveBatch>& live) {
     glViewport(0, 0, w, h);
     glClearColor(0.f, 0.f, 0.f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     if (p_->has_sky) {  // the sky zone seen from its SkyZoneInfo, behind everything
         Camera sky = cam;
         sky.pos = p_->sky_pos;
-        p_->pass(sky, w, h, true);
+        p_->pass(sky, w, h, true, nullptr);
         glClear(GL_DEPTH_BUFFER_BIT);
     }
-    p_->pass(cam, w, h, true);
+    p_->pass(cam, w, h, true, &live);
 }
 
 // backdrop_depth_only: FakeBackdrop surfaces write depth but no colour, so the sky drawn before shows through them.
-void Renderer::Impl::pass(const Camera& cam, int w, int h, bool backdrop_depth_only) {
+void Renderer::Impl::pass(const Camera& cam, int w, int h, bool backdrop_depth_only, const std::vector<LiveBatch>* live) {
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);  // shortcut: BSP winding not checked yet, draw both sides
     glUseProgram(prog);
@@ -178,6 +206,20 @@ void Renderer::Impl::pass(const Camera& cam, int w, int h, bool backdrop_depth_o
             glBindVertexArray(g.vao);
             glDrawArrays(GL_TRIANGLES, 0, g.count);
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        }
+        for (size_t i = 0; live && i < live->size(); i++) {  // shortcut: one upload per batch per frame, full bright
+            const LiveBatch& b = (*live)[i];
+            bool blended = b.flags & (PF_Translucent | PF_Modulated);
+            if (blended != (pass == 1) || b.verts.empty() || !b.image) continue;
+            if (b.flags & PF_Modulated) glBlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
+            else glBlendFunc(GL_ONE, GL_ONE);
+            glUniform1i(masked, b.flags & PF_Masked ? 1 : 0);
+            glUniform1i(lit, 0);
+            glBindTexture(GL_TEXTURE_2D, texture_of(b.image));
+            glBindVertexArray(live_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, live_vbo);
+            glBufferData(GL_ARRAY_BUFFER, GLsizeiptr(b.verts.size() * sizeof(Vertex)), b.verts.data(), GL_STREAM_DRAW);
+            glDrawArrays(GL_TRIANGLES, 0, GLsizei(b.verts.size()));
         }
     }
     glDepthMask(GL_TRUE);

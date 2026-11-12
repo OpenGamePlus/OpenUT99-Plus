@@ -20,6 +20,7 @@
 
 - `UTVM_TRACE=Fire,TakeDamage build/ut_script <UT99_DIR> --map MAP 60` logs every call of those script functions with object and state; the `--map` report ranks errors and log lines and lists the pawns (state, weapon, enemy, score).
 - "accessed None (Member)" warnings name the member reached through a None context: usually something the engine should have filled in.
+- Watch it: `build/ut_mapview <UT99_DIR> MAP --play` (F follows a bot). Meters count; the view shows what they miss (bots lying down, stuck in corners, swimming forever in slime). `--play --time 20 --follow --shot out/x.png` saves the picture for a check without a window.
 
 ## Commits
 

@@ -85,10 +85,12 @@ LodMesh read_lod_mesh(const Package& p, const Export& e) {
     u16s();       // remap anim verts
     if (r.pos != size_t(e.offset) + size_t(e.size)) throw std::runtime_error("lod mesh size mismatch");
     if (frame_verts < 0 || size_t(frame_verts) * 4 > verts.size()) throw std::runtime_error("bad frame size");  // 0: empty mesh (seen in a cache package)
+    m.frame_verts = frame_verts;
+    m.frames = frame_verts ? int(verts.size() / 4 / size_t(frame_verts)) : 0;
     Reader vr(verts);
-    for (int32_t i = 0; i < frame_verts; i++) m.frame0.push_back(unpack_vert(vr.u32()));
+    for (size_t i = 0; i < size_t(m.frames) * size_t(frame_verts); i++) m.verts.push_back(unpack_vert(vr.u32()));
     for (const LodMesh::Wedge& w : m.wedges)
-        if (size_t(w.vertex) + size_t(m.special_verts) >= m.frame0.size()) throw std::runtime_error("wedge vertex out of range");
+        if (size_t(w.vertex) + size_t(m.special_verts) >= size_t(frame_verts)) throw std::runtime_error("wedge vertex out of range");
     for (const LodMesh::Face& f : m.faces)
         for (uint16_t w : f.wedge)
             if (w >= m.wedges.size()) throw std::runtime_error("face wedge out of range");

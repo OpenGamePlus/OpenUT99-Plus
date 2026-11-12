@@ -59,9 +59,6 @@ static Axes rotation_axes(int32_t pitch, int32_t yaw, int32_t roll) {
 static Vec3 apply(const Axes& a, Vec3 v) {
     return {v.x * a.x.x + v.y * a.y.x + v.z * a.z.x, v.x * a.x.y + v.y * a.y.y + v.z * a.z.y, v.x * a.x.z + v.y * a.y.z + v.z * a.z.z};
 }
-static Vec3 apply_inverse(const Axes& a, Vec3 v) {
-    return {v.x * a.x.x + v.y * a.x.y + v.z * a.x.z, v.x * a.y.x + v.y * a.y.y + v.z * a.y.z, v.x * a.z.x + v.y * a.z.y + v.z * a.z.z};
-}
 
 struct LightInfo {
     Vec3 pos, colour;
@@ -152,7 +149,7 @@ static void add_mesh_actor(PackageSet& set, Props& props, std::map<const Export*
     auto it = meshes.find(mesh_obj.exp);
     if (it == meshes.end()) it = meshes.emplace(mesh_obj.exp, read_lod_mesh(*mesh_obj.package, *mesh_obj.exp)).first;
     const LodMesh& m = it->second;
-    if (m.frame0.empty()) return;
+    if (!m.frame_verts) return;
 
     Vec3 loc{};
     int32_t rot[3] = {0, 0, 0};
@@ -170,7 +167,9 @@ static void add_mesh_actor(PackageSet& set, Props& props, std::map<const Export*
     Axes ra = rotation_axes(rot[0], rot[1], rot[2]), ro = rotation_axes(m.rot_origin[0], m.rot_origin[1], m.rot_origin[2]);
     auto world = [&](Vec3 v) {
         Vec3 s{(v.x - m.origin.x) * m.scale.x * draw_scale, (v.y - m.origin.y) * m.scale.y * draw_scale, (v.z - m.origin.z) * m.scale.z * draw_scale};
-        Vec3 w = apply(ra, apply_inverse(ro, s));  // shortcut: RotOrigin inverted, checked visually only
+        // RotOrigin, then the actor's rotation: player meshes (RotOrigin yaw 90, roll -90) stand up and face their
+        // Rotation only this way (checked visually; the inverse lays them down).
+        Vec3 w = apply(ra, apply(ro, s));
         return Vec3{loc.x + w.x, loc.y + w.y, loc.z + w.z};
     };
     // Texture of material slot i: MultiSkins[i], else the mesh's own texture i, else Skin.
@@ -196,14 +195,14 @@ static void add_mesh_actor(PackageSet& set, Props& props, std::map<const Export*
         Batch& b = scene.batches[bs->second];
         for (int k = 0; k < 3; k++) {
             const LodMesh::Wedge& w = m.wedges[f.wedge[k]];
-            Vec3 p = world(m.frame0[size_t(w.vertex) + size_t(m.special_verts)]);
+            Vec3 p = world(m.verts[size_t(w.vertex) + size_t(m.special_verts)]);  // frame 0
             b.verts.push_back({p.x, p.y, p.z, float(w.u) / 256.f, float(w.v) / 256.f, 0.5f / aw, 0.5f / ah});
         }
     }
     scene.mesh_actors++;
 }
 
-Scene load_scene(PackageSet& set, const std::string& map) {
+Scene load_scene(PackageSet& set, const std::string& map, bool mesh_actors) {
     const Package* pkg = set.get(map);
     if (!pkg) throw std::runtime_error("map not found: " + map);
     const Export* level_exp = nullptr;
@@ -295,7 +294,7 @@ Scene load_scene(PackageSet& set, const std::string& map) {
         Object a = set.resolve(*pkg, ref);
         if (!a.exp || a.package != pkg || !a.exp->size) continue;
         std::string cls = object_name(*pkg, a.exp->class_ref);
-        add_mesh_actor(set, props, meshes, a, batch_of, scene);
+        if (mesh_actors) add_mesh_actor(set, props, meshes, a, batch_of, scene);
         if (!scene.has_sky && cls.find("Sky") != std::string::npos) {  // shortcut: SkyZoneInfo and subclasses by name
             size_t end = 0;
             for (const Property& prop : read_properties(*pkg, *a.exp, &end))

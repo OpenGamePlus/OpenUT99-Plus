@@ -457,23 +457,32 @@ Obj* World::zone_at(Vec3 p, int* number, int* leaf) {
 }
 
 void World::set_region(Obj* o, const char* var, Vec3 at, const char* event) {
+    // Order (unverified, from what the scripts read): the old zone's ActorLeaving, then the actor's *ZoneChange while
+    // its region still names the old zone (Pawn.FootZoneChange compares FootRegion.Zone with the new one), then the
+    // new region, then the new zone's ActorEntered. Only Region (not foot / head) tells the zones.
     Value* region = vm_.prop(o, var);
     if (!region || !region->field_names) return;
     int number = 0, leaf = -1;
     Obj* zone = zone_at(at, &number, &leaf);
     Obj* old = nullptr;
+    for (size_t k = 0; k < region->fields.size(); k++)
+        if ((*region->field_names)[k] == "Zone") old = region->fields[k].o;
+    bool tell_zones = std::string(var) == "Region";
+    Value self = Value::of(VT::Object), z = Value::of(VT::Object);
+    self.o = o, z.o = zone;
+    bool change = old && old != zone && begun_;  // the first region (just spawned) is set silently
+    if (change) {
+        if (tell_zones) guarded(old, "ActorLeaving", {self});
+        if (!deleted_.count(o)) guarded(o, event, {z});
+    }
     for (size_t k = 0; k < region->fields.size(); k++) {  // PointRegion: Zone, iLeaf, ZoneNumber
         const std::string& f = (*region->field_names)[k];
         Value& v = region->fields[k];
-        if (f == "Zone") old = v.o, v.o = zone;
+        if (f == "Zone") v.o = zone;
         else if (f == "iLeaf") v.i = leaf;
         else if (f == "ZoneNumber") v.i = number & 0xFF;
     }
-    if (old != zone && begun_) {
-        Value z = Value::of(VT::Object);
-        z.o = zone;
-        guarded(o, event, {z});  // unverified: the original also tells the zones (ActorEntered / ActorLeaving)
-    }
+    if (change && tell_zones && zone && !deleted_.count(o)) guarded(zone, "ActorEntered", {self});
 }
 
 void World::update_region(Obj* o) {
@@ -669,6 +678,8 @@ void World::tick(float dt) {
         bool moving = mode && mode->i != 0;
         physics(o, dt);
         update_region(o);
+        if (Value* pain = vm_.prop(o, "PainTime"); pain && pain->f > 0 && !deleted_.count(o) && (pain->f -= dt) <= 0)
+            guarded(o, "PainTimer");  // Pawn: pain zones, drowning (the script sets PainTime again)
         if (moving && !deleted_.count(o)) touches(o);
         if (const Value* pawn = vm_.prop(o, "bIsPawn"); pawn && pawn->i && !deleted_.count(o)) sight(o, dt);
         animate(o, dt);

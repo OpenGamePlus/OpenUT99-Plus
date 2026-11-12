@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
                 if (e.class_ref == 0) std::printf("%zu %zu\n", i, ut::read_class(p, e).defaults.size());
                 else if (ut::object_name(p, e.class_ref) == "LodMesh") {
                     ut::LodMesh m = ut::read_lod_mesh(p, e);
-                    std::printf("%zu m %zu %zu %zu\n", i, m.frame0.size(), m.faces.size(), m.wedges.size());
+                    std::printf("%zu m %zu %zu %zu\n", i, size_t(m.frame_verts), m.faces.size(), m.wedges.size());
                 }
             }
             return 0;

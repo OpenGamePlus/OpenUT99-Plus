@@ -17,7 +17,7 @@ class Renderer {
 public:
     explicit Renderer(const Scene& scene);  // uploads all batches
     ~Renderer();
-    void draw(const Camera& cam, int w, int h);
+    void draw(const Camera& cam, int w, int h, const std::vector<LiveBatch>& live = {});  // live: uploaded each call
     void save_png(const std::string& path, int w, int h) const;
 
 private:

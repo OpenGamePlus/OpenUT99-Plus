@@ -18,6 +18,13 @@ struct Batch {
     std::vector<Vertex> verts;  // triangles, UE world coordinates, UVs in texture units
 };
 
+// Geometry rebuilt every frame (live actors of a running world): world-space triangles, drawn full bright.
+struct LiveBatch {
+    const Image* image = nullptr;  // owned by the producer, stable while it lives
+    uint32_t flags = 0;
+    std::vector<Vertex> verts;
+};
+
 struct Spawn {
     Vec3 pos;
     int32_t pitch = 0, yaw = 0;  // UE rotator units, 65536 = full turn
@@ -33,7 +40,8 @@ struct Scene {
     size_t mesh_actors = 0;  // actors drawn with a LodMesh (frame 0)
 };
 
-// Throws std::runtime_error if the map or its Level / Model cannot be read.
-Scene load_scene(PackageSet& set, const std::string& map);
+// Throws std::runtime_error if the map or its Level / Model cannot be read. mesh_actors = false leaves the map's mesh
+// actors out (a running world draws them live).
+Scene load_scene(PackageSet& set, const std::string& map, bool mesh_actors = true);
 
 }  // namespace ut

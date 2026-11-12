@@ -30,8 +30,9 @@
 | `engine/world.*`, `engine/world_ai.cpp`, `engine/world_mover.cpp` | map actors as VM instances, play start, ticking, timers, physics, touching, animation, Actor and AI natives (path network, routes, latent moves), movers (brush collision, interpolation, bases) | `vm`, `level`, `collision`, `mesh`, `packages` |
 | `engine/lighting.*` | luxel positions, shadow bits, light colours, atlas packer | `level` |
 | `engine/scene.*` | map → texture batches, baked lightmap atlas, sky position, mesh actors (property lookup through class defaults), player starts (no GL) | `packages`, `level`, `texture`, `lighting`, `script`, `mesh` |
+| `engine/play_view.*` | a running world's live actors (animated LodMesh actors, mover brushes) as world-space triangles each frame (no GL) | `world`, `vm`, `mesh`, `texture`, `level`, `scene` |
 | `engine/render.*` (library `ut_render`) | OpenGL 3.3 renderer, screenshots | `scene`, `png`, epoxy |
-| `engine/mapview.cpp` | executable `ut_mapview`: window, input, `--shot`, `--check` | `render`, `scene`, `vfs`, SDL2 |
+| `engine/mapview.cpp` | executable `ut_mapview`: window, input, `--shot`, `--check`, `--play` (the match running in the view) | `render`, `scene`, `play_view`, `world`, `vm`, `vfs`, SDL2 |
 | `engine/ut_dump.cpp` | executable: package summary, property counts, model, class-default and mesh counts, dependency check | `upkg`, `level`, `script`, `mesh`, `config`, `vfs` |
 | `engine/ut_script.cpp` | executable: run a script function, a class's auto state, or maps; sweeps | `vm`, `world`, `config`, `vfs` |
 | `tools/compare_engine.py` | runs `ut_dump` against the Python readers on an install | `upkg`, `uprops` (Python) |

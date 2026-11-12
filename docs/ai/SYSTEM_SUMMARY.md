@@ -23,11 +23,12 @@ engine/
   world.{h,cpp}      map actors in the VM, play start, ticks, timers, physics, touching, animation, Actor natives
   world_ai.cpp       walking, path network, routes, latent moves (AI natives)
   world_mover.cpp    movers: brush collision, keyframe interpolation, bases, encroachment
+  play_view.{h,cpp}  live actors of a running world as triangles each frame (animated meshes, mover brushes)
   lighting.{h,cpp}   lightmap luxels, shadow bits, light colours, atlas
   scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, mesh actors, player starts
   render.{h,cpp}     OpenGL 3.3 renderer (library ut_render)
   png.{h,cpp}        PNG encoder for screenshots
-  mapview.cpp        ut_mapview: free-fly viewer, --shot, --check
+  mapview.cpp        ut_mapview: free-fly viewer, --shot, --check, --play
   ut_dump.cpp        summary / property counts / --deps
   ut_script.cpp      run a script function / auto state / map; --states, --maps sweeps
   test_engine.cpp    unit tests on synthetic data (ctest)
@@ -61,7 +62,7 @@ tools/
 | Script objects and bytecode | done, byte-exact (token semantics from public docs) |
 | Polys, Model, Level | done, byte-exact; indices and lightmap sizes cross-checked |
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
-| Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers agree with Python on all 396 packages (`compare_engine.py` compares counts and end offsets per object, not every value); level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load |
+| Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers agree with Python on all 396 packages (`compare_engine.py` compares counts and end offsets per object, not every value); level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load; `ut_mapview MAP --play` runs the match in the view (bots animated, movers moving, live actors full bright) |
 | UnrealScript VM (C++) | functions load (all 20,052 retail); objects with class defaults (all 1,604 retail classes), instance / default variables, contexts (None skipped with a warning), structs, static arrays, casts; states (dispatch through the state, labels, `GotoState`, auto state, latent `Sleep`, `tick`); control flow, script and native calls, out / optional parameters, ≈ 140 operator, string and math natives; 13 retail `TestInfo` self-tests pass; `--states` sweep: every class enters its auto state, none stops on an error. No iterators or engine natives yet |
 | World (C++) | all 83 maps load their actors, start `DeathMatchPlus` and run with no script error (`--maps`); timers, `ForEach` iterators, pawn list, spawn / destroy; physics against the BSP (falling, projectile, flying, rotating, walking with step-up) and BSP traces; touching; animation timing; bots spawn, roam the path network, pick up items, see and fight each other (instant-hit weapons through actor traces), die, score and respawn; no blocking between actors or sound |
 | Network | not started |
@@ -79,7 +80,8 @@ build/ut_script <UT99_DIR> --states                # phase C meter: auto state o
 build/ut_script <UT99_DIR> --run Package.Class [TICKS]   # spawn, auto state, tick its state code
 build/ut_script <UT99_DIR> --map MAP [SECONDS]      # play a map's script: errors and log ranked
 build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no errors, pawns travelled; inside solid only BioAmmo / UT_invisibility (map data)
-build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # RMB + mouse look, WASD fly
+build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # drag to look, arrows, WASD fly
+build/ut_mapview <UT99_DIR> MAP --play [--time S --follow --shot out/x.png]   # the match running; F follows a bot
 python3 tools/check_docs.py                    # doc checks
 python3 tools/upkg.py FILE [--names|--imports|--exports]
 python3 tools/uprops.py FILE OBJECT              # properties of one export

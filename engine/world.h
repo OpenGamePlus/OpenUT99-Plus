@@ -31,6 +31,7 @@ public:
     Obj* game = nullptr;
     float time = 0;
     std::map<std::string, int> errors;  // script errors (without the function name) -> count; the world goes on
+    bool destroyed(Obj* o) const { return deleted_.count(o) > 0; }  // Destroy()ed: still listed, no longer in play
     const Model* model() const { return has_model_ ? &model_ : nullptr; }
     void set_model(Model m) { model_ = std::move(m), has_model_ = true; }  // load() does it; for tests
     // ZoneInfo of the BSP leaf holding p (the LevelInfo for zone 0); also its zone number and leaf if asked.
