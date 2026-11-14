@@ -1,6 +1,6 @@
 """Measure the original engine with our probe (ADR 0008).
 
-    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
+    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
 
 MAPGEN_DIR is a ut99-mapgen checkout set up as in DEVELOPMENT_GUIDE: ut/ holds a copy of the install with the
 OldUnreal Linux patch that matches it (the server we measure); make-469e/ holds a System with the v469e Linux patch,
@@ -13,6 +13,8 @@ both side by side.
 Each calibration is a map of lanes; a ProbePawn walks +x along each one toward an obstacle of growing rise. Reports,
 per lane, the obstacle, its rise and how high the pawn got: a pawn that gets over it is lifted by its rise.
 "steps": steps of growing height. "ramps": true slopes (wedges, 192 units long) of growing angle.
+"air": a ProbeFaller per lane, spawned 1,800 up with growing AirControl, falls while MoveTo pulls it forward;
+reports its mean horizontal acceleration while falling and its top horizontal speed.
 """
 import math
 import os
@@ -25,9 +27,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STEP_HEIGHTS = [16, 24, 28, 29, 30, 31, 32, 40]
 RAMP_ANGLES = [30, 40, 44, 46, 50, 55, 60]
 RAMP_RUN = 192
+AIR_CONTROLS = [0, 0.05, 0.2, 0.35, 0.6, 1.0]
+AIR_Z = 1800
 LANE_Y0, LANE_GAP = -1050, 300
 FLOOR = 0
-MAPS = {"steps": "OU-Steps", "ramps": "OU-Ramps"}
+MAPS = {"steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
 
 
@@ -83,7 +87,22 @@ def wedge(x0, x1, y0, y1, z0, z1, texture, name):
 def rises(kind):
     if kind == "steps":
         return [(f"{h}", h) for h in STEP_HEIGHTS]
+    if kind == "air":
+        return [(f"air {c:g}", c) for c in AIR_CONTROLS]
     return [(f"{a} deg", RAMP_RUN * math.tan(math.radians(a))) for a in RAMP_ANGLES]
+
+
+def air_report(tracks):
+    """{lane: (horizontal acceleration while falling, top horizontal speed)} from the falling samples."""
+    out = {}
+    for samples in tracks.values():
+        falling = [s for s in samples if s[4] == 2 and s[0] > 0.1]
+        if len(falling) < 2:
+            continue
+        a, b = falling[0], falling[-1]
+        speed = lambda s: (s[5] ** 2 + s[6] ** 2) ** 0.5
+        out[lane_of(samples[0][2])] = ((speed(b) - speed(a)) / (b[0] - a[0]), max(speed(s) for s in falling))
+    return out
 
 
 def build_lanes(mapgen, kind):
@@ -94,10 +113,14 @@ def build_lanes(mapgen, kind):
     m = Map(MAPS[kind])
     lanes = rises(kind)
     y_top = LANE_Y0 + LANE_GAP * len(lanes)
-    m.add(box(-512, LANE_Y0 - 350, FLOOR, 2048, y_top + 100, FLOOR + 512,
+    height = 2048 if kind == "air" else 512
+    m.add(box(-512, LANE_Y0 - 350, FLOOR, 2048, y_top + 100, FLOOR + height,
               floor="UTtech1.bmFloor", walls="UTtech1.bmwall3", ceiling="UTtech1.bmFloor"))
     for i, (_, rise) in enumerate(lanes):
         y = LANE_Y0 + i * LANE_GAP
+        if kind == "air":
+            m.actor("PathNode", 0, y, FLOOR + AIR_Z, Tag=f"Air{round(rise * 100)}")
+            continue
         if kind == "steps":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
                       name=f"Lane{i}"))
@@ -168,10 +191,20 @@ def main(argv):
     if not tracks:
         raise SystemExit(f"no probe lines in {log_path}")
     ours = None
+    report = air_report if kind == "air" else step_report
     if "--ours" in argv:
-        ours = step_report(parse_log(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind],
-                                              seconds)))
+        ours = report(parse_log(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind], seconds)))
     lanes = rises(kind)
+    if kind == "air":
+        print("lane      original: accel  top speed" + ("   ours: accel  top speed" if ours is not None else ""))
+        for lane, (acc, top) in sorted(report(tracks).items()):
+            label = lanes[lane][0] if 0 <= lane < len(lanes) else "?"
+            row = f"{label:>8}  {acc:15.1f}  {top:9.1f}"
+            if ours is not None:
+                o = ours.get(lane)
+                row += f"   {o[0]:11.1f}  {o[1]:9.1f}" if o else "   (no track)"
+            print(row)
+        return
     print("lane      rise  original: rest z  top z  over" + ("   ours: rest z  top z  over" if ours is not None else ""))
     for lane, (rest_z, top) in sorted(step_report(tracks).items()):
         label, rise = lanes[lane] if 0 <= lane < len(lanes) else ("?", 0)

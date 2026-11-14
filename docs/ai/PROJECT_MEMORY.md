@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — air control measured: none from latent moves
+
+- `calibrate.py air` (`OU-Air`, `ProbeFaller`; the mutator reads `AirNN` PathNode tags as AirControl): a falling non-player pawn doing `MoveTo` gets no horizontal acceleration in the original, for AirControl 0 to 1; ours matches, gravity 950 in both.
+- So the steep-slope gap is the slide itself: the original's slide starts at 347 along the slope and slows by 414 units/s² (ours 278 and 683). Next: a slide calibration (pawns dropped on slopes of several angles, with and without speed) to find the rule.
+
 ## 2026-11-14 — leaf hulls in the box trace; sliding on steep slopes
 
 - The Model's `leaf hulls` decoded (level.md): per solid cell, its planes and bounding box. The box trace checks a reached solid leaf against its hull (the box sides act as bevels): on the probe's ramps ours now matches the original to 0.2 at the crest (it rose 30 too high). C++ vs Python 0 differ; ASan/UBSan clean on all maps and two 20 s matches.
