@@ -2,6 +2,10 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — community repositories reviewed
+
+- [ADR 0007](../architecture/adr/0007-community-repositories.md): UT Bible, ut99-mapgen (own test maps) and UTCompress (`.uz`) allowed as public documentation; ut99-recomp forbidden (from disassembly); Epic's Ut99PubSrc not used for now; exported script repositories redundant.
+
 ## 2026-11-11 — the match in the viewer
 
 - `ut_mapview MAP --play`: the world runs in the window; `engine/play_view.*` draws live actors each frame (LodMesh actors at their animation frame, blended, and mover brushes); drag to look, F follows a bot; `--play --shot --time S --follow` for checks. The LodMesh reader now keeps every frame.
