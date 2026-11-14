@@ -404,7 +404,7 @@ static void test_read_class() {
 // 50 Sum's local U; 51 Three's parameter U; 52 LatentFloat of T.
 // 35-37 TimerRate, TimerCounter, bTimerLoop of T; 38 Timer(): X = X * 2.
 // 39-47 Location, Velocity, Acceleration, Physics, bCollideActors, bCollideWorld, CollisionRadius, CollisionHeight,
-// GroundSpeed of T; 48 Touch(Other): X = X * 2.
+// GroundSpeed of T; 48 Touch(Other): X = X * 2. 53-55 bBlockActors, bBlockPlayers, bIsPlayer of T.
 static Package vm_package() {
     Package p;
     p.version = 69;
@@ -531,6 +531,7 @@ static Package vm_package() {
     add(-2, 31, "U", prop(0, 0));
     add(-2, 29, "U", prop(0, kParm | kOutParm));
     add(-4, 1, "LatentFloat", prop(0, 0));
+    for (const char* v : {"bBlockActors", "bBlockPlayers", "bIsPlayer"}) add(-3, 1, v, prop(0, 0));  // 53-55
     return p;
 }
 
@@ -612,6 +613,17 @@ static void test_vm() {
     const float* at = vm.prop(walker, "Location")->v;
     assert(walker->vars[vm.object(p, 17)][0].i == 10 && other->vars[vm.object(p, 17)][0].i == 10);  // both touched once
     assert(at[0] > 79 && at[0] < 80.5f && std::fabs(at[2] - 20) < 0.5f && vm.prop(walker, "Physics")->i == 1);
+    assert(w.errors.empty());
+    // Both block actors now: the walker, back at x = 0, stops where the cylinders meet (60 - 40) and does not touch.
+    vm.prop(walker, "Location")->v[0] = 0;
+    w.tick(0.01f);  // UnTouch
+    for (Obj* o : {walker, other}) vm.prop(o, "bBlockActors")->i = 1;
+    for (int k = 0; k < 10; k++) w.tick(0.05f);
+    assert(at[0] > 19 && at[0] < 20.01f && walker->vars[vm.object(p, 17)][0].i == 10);  // no new Touch
+    vm.prop(walker, "bIsPlayer")->i = 1;  // a player is blocked by bBlockPlayers (false): walks through
+    for (int k = 0; k < 10; k++) w.tick(0.05f);
+    assert(at[0] > 79);
+    for (Obj* o : {walker, other}) vm.prop(o, "bBlockActors")->i = 0;
     assert(w.errors.empty());
     // A ramp rising 30 degrees from x = 100 (solid below it): the walker goes up it instead of stopping.
     Model ramp;

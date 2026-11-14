@@ -386,7 +386,7 @@ Obj* World::spawn(Obj* cls, Obj* spawner, Obj* owner, const std::string* tag, co
 }
 
 void World::touches(Obj* o) {
-    // Collision cylinders (bCollideActors) that overlap touch (shortcut: no blocking, Bump or encroachment yet).
+    // Collision cylinders (bCollideActors) that overlap touch; blocking is in move() (blocking_actor).
     auto f = [this](Obj* x, const char* n) {
         const Value* v = vm_.prop(x, n);
         return v ? v->f : 0.f;
@@ -432,6 +432,13 @@ void World::touches(Obj* o) {
         }
         if (deleted_.count(o)) return;
     }
+}
+
+void World::bump(Obj* o, Obj* x) {
+    Value a = Value::of(VT::Object), b = Value::of(VT::Object);
+    a.o = o, b.o = x;
+    guarded(x, "Bump", {a});
+    if (!deleted_.count(o) && !deleted_.count(x)) guarded(o, "Bump", {b});
 }
 
 void World::destroy(Obj* o) {
@@ -522,8 +529,41 @@ Hit World::move(Obj* o, Vec3 d, Obj** what) {
             return blocked;
         }
     }
+    if (Obj* x = blocking_actor(o, from, {from.x + d.x, from.y + d.y, from.z + d.z}, &h)) {
+        if (what) *what = x;
+    }
     loc->v[0] += d.x * h.time, loc->v[1] += d.y * h.time, loc->v[2] += d.z * h.time;
     return h;
+}
+
+Obj* World::blocking_actor(Obj* o, Vec3 a, Vec3 b, Hit* h) {
+    // The centre swept against each blocking actor's cylinder grown by o's (both radii, both heights). Rule
+    // (unverified, inferred from the retail defaults): both collide with actors and each blocks the other's kind,
+    // bBlockPlayers toward a bIsPlayer pawn, else bBlockActors; so projectiles (bBlockActors false) touch pawns.
+    // Actors that already overlap are not blocked (ray_cylinder skips a start inside), so they can part.
+    auto flag = [this](Obj* x, const char* n) {
+        const Value* v = vm_.prop(x, n);
+        return v && v->i;
+    };
+    auto blocks = [&](Obj* x, Obj* y) { return flag(x, flag(y, "bIsPlayer") ? "bBlockPlayers" : "bBlockActors"); };
+    if (!flag(o, "bCollideActors") || movers_.count(o)) return nullptr;
+    const Value* ro = vm_.prop(o, "CollisionRadius");
+    const Value* ho = vm_.prop(o, "CollisionHeight");
+    float t = h->time;
+    Vec3 n{0, 0, 0};
+    Obj* best = nullptr;
+    for (Obj* x : actors) {
+        if (x == o || deleted_.count(x) || movers_.count(x) || !flag(x, "bCollideActors") || !blocks(x, o) ||
+            !blocks(o, x))
+            continue;
+        const Value* rx = vm_.prop(x, "CollisionRadius");
+        const Value* hx = vm_.prop(x, "CollisionHeight");
+        float r = (ro ? ro->f : 0) + (rx ? rx->f : 0), hh = (ho ? ho->f : 0) + (hx ? hx->f : 0);
+        const Value* lx = vm_.prop(x, "Location");
+        if (lx && ray_cylinder(a, b, {lx->v[0], lx->v[1], lx->v[2]}, r, hh, &t, &n)) best = x;
+    }
+    if (best) h->hit = true, h->time = std::max(0.f, t - 0.001f), h->normal = n;  // pulled back like world hits
+    return best;
 }
 
 void World::physics(Obj* o, float dt) {
@@ -540,6 +580,7 @@ void World::physics(Obj* o, float dt) {
     };
     Obj* hit_actor = nullptr;
     auto wall = [&](const Hit& h) {
+        if (hit_actor && hit_actor != level_info && !movers_.count(hit_actor)) return bump(o, hit_actor);
         Value w = Value::of(VT::Object);
         w.o = hit_actor ? hit_actor : level_info;
         guarded(o, "HitWall", {hit_value(h), w});

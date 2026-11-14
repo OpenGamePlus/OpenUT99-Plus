@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — blocking between actors
+
+- `World::move` sweeps the moving centre against the cylinders of actors that block it (grown by both sizes); both must block the other's kind (`bBlockPlayers` toward a `bIsPlayer` pawn, else `bBlockActors`; inferred from retail defaults, unverified), so pawns block pawns and projectiles still touch them. A blocked move sends `Bump` both ways, falling and flying included (`HitWall` stays for BSP and movers).
+- `--maps 60`: 5,374 units per bot (5,267 before), 88 deaths (51), no script error; bots still falling unchanged (68 vs 63, an older problem). Costs ≈ 20 % of a match's time (every move scans every actor).
+- The sweep now names the map of an actor inside solid: a CTF-Gauntlet bot was pushed into a wall by the lift it rode (riders carried without collision, known). Next: bots stepping around a blocking pawn, or the falling bots.
+
 ## 2026-11-14 — community repositories reviewed
 
 - [ADR 0007](../architecture/adr/0007-community-repositories.md): UT Bible, ut99-mapgen (own test maps) and UTCompress (`.uz`) allowed as public documentation; ut99-recomp forbidden (from disassembly); Epic's Ut99PubSrc not used for now; exported script repositories redundant.

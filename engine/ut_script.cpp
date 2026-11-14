@@ -175,7 +175,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
             if (mode && mode->i == 2) falling++, falling_classes[vm.name_of(o->cls)]++;
             if (loc && collide && collide->i && w.model() && ut::point_solid(*w.model(), {loc->v[0], loc->v[1], loc->v[2]})) {
                 in_solid++;
-                solid_classes[vm.name_of(o->cls)]++;
+                solid_classes[vm.name_of(o->cls) + " (" + d.path().stem().string() + ")"]++;
             }
         }
     }
@@ -188,7 +188,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
         ranked(falling_classes, 8);
     }
     if (in_solid) {
-        std::printf("inside solid, by class:\n");
+        std::printf("inside solid, by class (map):\n");
         ranked(solid_classes, 8);
     }
     std::printf("errors:\n");

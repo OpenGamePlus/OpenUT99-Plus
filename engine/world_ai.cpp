@@ -177,15 +177,14 @@ void World::walk(Obj* o, float dt) {
     Vec3 delta{v[0] * dt, v[1] * dt, 0};
     Obj* blocker = nullptr;
     Hit h = move(o, delta, &blocker);
-    if (h.hit && blocker && movers_.count(blocker)) {  // walking into a door or lift: Bump both, HitWall the walker
-        Value a = Value::of(VT::Object), b = Value::of(VT::Object), n = Value::of(VT::Vector);
-        a.o = o, b.o = blocker;
-        n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
-        guarded(blocker, "Bump", {a});
-        guarded(o, "Bump", {b});
+    if (h.hit && blocker && blocker != level_info) {  // walking into an actor, door or lift: Bump both
+        bump(o, blocker);
         // shortcut: HitWall only for movers (bots open doors there); BSP walls would cancel moves our coarse steering
         // still slides along. Upgrade with the original step-up failure rule once steering follows paths closely.
-        if (!deleted_.count(o)) guarded(o, "HitWall", {n, b});
+        Value b = Value::of(VT::Object), n = Value::of(VT::Vector);
+        b.o = blocker;
+        n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
+        if (movers_.count(blocker) && !deleted_.count(o)) guarded(o, "HitWall", {n, b});
     }
     for (int k = 0; k < 2 && h.hit && h.normal.z >= 0.7f; k++) {  // a ramp: go on along its surface
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};

@@ -79,7 +79,7 @@ build/ut_script <UT99_DIR> Engine.TestInfo.TestSwitch   # run a script function:
 build/ut_script <UT99_DIR> --states                # phase C meter: auto state of every class, missing natives ranked
 build/ut_script <UT99_DIR> --run Package.Class [TICKS]   # spawn, auto state, tick its state code
 build/ut_script <UT99_DIR> --map MAP [SECONDS]      # play a map's script: errors and log ranked
-build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no errors, pawns travelled; inside solid only BioAmmo / UT_invisibility (map data)
+build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no errors, pawns travelled; inside solid (listed with the map): BioAmmo / UT_invisibility (map data), at most a lift rider (riders carried without collision)
 build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # drag to look, arrows, WASD fly
 build/ut_mapview <UT99_DIR> MAP --play [--time S --follow --shot out/x.png]   # the match running; F follows a bot
 python3 tools/check_docs.py                    # doc checks

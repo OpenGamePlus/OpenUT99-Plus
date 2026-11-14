@@ -48,6 +48,9 @@ private:
     Hit move(Obj* o, Vec3 delta, Obj** what = nullptr);
     // The level BSP and every blocking mover brush; *what = the LevelInfo, a mover or nullptr.
     Hit trace_world(Obj* self, Vec3 a, Vec3 b, Vec3 extent, Obj** what = nullptr);
+    // The first actor blocking o's move a-b before h->time; then updates *h (hit, time, normal).
+    Obj* blocking_actor(Obj* o, Vec3 a, Vec3 b, Hit* h);
+    void bump(Obj* o, Obj* other);  // Bump on both
     Hit trace_brush(Obj* mover, Vec3 a, Vec3 b, Vec3 extent);  // one mover alone (no hit if it does not block)
     void move_brush(Obj* o, float dt);   // PHYS_MovingBrush: InterpolateTo's keyframe glide, carries what stands on it
     void set_base(Obj* o, Obj* base);    // Base, StandingCount, Detach / Attach / BaseChange
