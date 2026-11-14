@@ -616,6 +616,14 @@ void World::physics(Obj* o, float dt) {
                 wall(h);
                 float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
                 v[0] -= dot * h.normal.x, v[1] -= dot * h.normal.y, v[2] -= dot * h.normal.z;
+                // Measured (script.md, probe OU-Slide, 46-80 deg): sliding on a surface gains only 1 / (1 + nz^2) of
+                // gravity's pull along it (fitted to 0.003; the mechanism is unknown). Take back the rest.
+                if (h.normal.z > 0) {
+                    float gv[3] = {g ? g->v[0] : 0.f, g ? g->v[1] : 0.f, g ? g->v[2] : -950.f};
+                    float gn = gv[0] * h.normal.x + gv[1] * h.normal.y + gv[2] * h.normal.z;
+                    float nz2 = h.normal.z * h.normal.z, k = dt * nz2 / (1 + nz2);
+                    for (int c = 0; c < 3; c++) v[c] -= (gv[c] - gn * (&h.normal.x)[c]) * k;
+                }
                 // Slide the rest of the tick along the surface (a pawn sliding on a slope too steep to walk keeps
                 // moving, as measured in the original: script.md). shortcut: one slide; a second hit waits a tick.
                 if (mode->i == 2 && !deleted_.count(o)) {

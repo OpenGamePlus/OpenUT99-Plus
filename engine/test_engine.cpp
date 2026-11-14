@@ -650,6 +650,22 @@ static void test_vm() {
         for (int k = 0; k < 20; k++) w.tick(0.05f);
         assert(rise < 29.5f ? wl[0] > 150 && std::fabs(wl[2] - rise - 24.8f) < 0.5f : wl[0] < 81 && wl[2] < 25.5f);
     }
+    // Dropped on a 60 degree slope (solid below the plane through the origin), it slides down gaining 1 / (1 + nz^2)
+    // of gravity along the slope: 0.8 * 950 * sin 60 = 658 units/s (script.md, measured).
+    Model steep;
+    Node face60{};
+    face60.plane[0] = -0.8660254f, face60.plane[2] = 0.5f, face60.back = -1, face60.front = -1;
+    steep.nodes = {face60};
+    w.set_model(steep);
+    wl[0] = 0, wl[1] = 0, wl[2] = 60;
+    vm.prop(walker, "Physics")->i = 2;
+    float* wv = vm.prop(walker, "Velocity")->v;
+    wv[0] = wv[1] = wv[2] = 0;
+    auto speed = [&] { return std::sqrt(wv[0] * wv[0] + wv[1] * wv[1] + wv[2] * wv[2]); };
+    for (int k = 0; k < 10; k++) w.tick(0.05f);
+    float s0 = speed();
+    for (int k = 0; k < 5; k++) w.tick(0.05f);
+    assert(vm.prop(walker, "Physics")->i == 2 && wv[0] < 0 && std::fabs((speed() - s0) / 0.25f - 658.2f) < 10);
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);
