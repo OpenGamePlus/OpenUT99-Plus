@@ -30,6 +30,7 @@ Our own small maps built with the retail `ucc`, to observe the original ([ADR 00
 2. Extract the OldUnreal Linux release that matches the install's packages (now v469f-rc5, see [install.md](../formats/install.md)) over `ut/`; `chmod +x ut/System/ucc-bin* ut/System/ut-bin*`. Do not fetch the SDK (engine headers, [ADR 0007](../architecture/adr/0007-community-repositories.md)).
 3. In the copy's `System/UnrealTournament.ini`: `ViewportManager=SDLDrv.SDLClient` (the Windows ini names `WinDrv`, which the Linux `ucc` cannot load).
 4. `python3 tools/selftest.py` in the mapgen clone: 13/13.
+5. For the probe: `make-469e/` in the mapgen clone, a copy of the install's `System/` with the v469e Linux release extracted over it (binaries land in `System64/`). The 469f-rc5 Linux `ucc make` recurses forever into `Classes/./` (seen under gdb), so the probe is compiled there; the package compiled against 469e loads in the 469f-rc5 server. `calibrate.py` writes `System64/Probe.ini` (only Core, Engine, OUProbe) and the package lands in `~/.utpg/System/`.
 
 ## Commits
 

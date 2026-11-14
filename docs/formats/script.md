@@ -122,3 +122,12 @@ Not yet: `new`, dynamic arrays, binary struct defaults (other than Vector / Rota
 
 - Semantics of each native function beyond the operators, string and math functions implemented in `engine/vm.cpp`.
 - Flag bit names (function, property, class, state flags).
+
+## Measured in the original
+
+With our probe ([ADR 0008](../architecture/adr/0008-probe-the-original.md); `tools/probe/calibrate.py`), on the 469f-rc5 Linux dedicated server, map `OU-Steps` (built with ut99-mapgen: floor z = 0, lanes of steps 16–40 high, checked solid / empty in its BSP). A `ProbePawn` (radius 17, height 39, `GroundSpeed` 400) falls to the floor, then walks with a latent `MoveTo` 1,500 units ahead:
+
+- A walking pawn rests with its centre 43.8 above the floor: 4.8 above `CollisionHeight` (on step tops likewise: 59.7 on a 16 step).
+- It climbs steps up to 29 high, not 30 (heights tried: 16, 24, 28, 29, 30, 31, 32, 40). Our reading, not measured: a step of 25 counted from the 4.8 hover gives 29.8.
+- A non-player pawn whose `Tick` sets `Acceleration` does not move: velocity stays 0. Bots move through latent moves.
+

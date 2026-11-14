@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — the probe measures the original
+
+- [ADR 0008](../architecture/adr/0008-probe-the-original.md): `tools/probe/OUProbe` (our UnrealScript: a mutator spawning a `ProbePawn` at each PathNode, logging its state each tick) runs on the original's Linux dedicated server; `calibrate.py` compiles it, builds the map with ut99-mapgen, runs the server and reads the log.
+- First numbers (`OU-Steps`): a walking pawn hovers 4.8 above the floor and climbs steps up to 29, not 30 (we use 25 on the floor). Pawns driven by `Acceleration` in `Tick` do not move; the probe walks with `MoveTo`.
+- Snags: the 469f-rc5 Linux `ucc make` recurses forever into `Classes/./` (compiled with a 469e System instead); a pawn spawned by a mutator needs `bGameRelevant` or the game discards it; killing the server with SIGKILL loses its log. Next: our engine with the hover and step, then ramps.
+
 ## 2026-11-14 — ut99-mapgen set up; the install is 469f-rc5
 
 - ut99-mapgen ([ADR 0007](../architecture/adr/0007-community-repositories.md)) runs outside the repo on a copy of the install with the OldUnreal Linux patch; its self test passes (13/13). It builds our own calibration maps with the retail `ucc`; maps stay out of the repo.

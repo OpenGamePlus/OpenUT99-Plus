@@ -11,6 +11,7 @@ Accepted ADRs are never edited; a later ADR marks them `Superseded by NNNN`.
 | [0005](0005-network-compatibility.md) | Interoperate with the original game over the network | Accepted |
 | [0006](0006-unrealscript-execution.md) | Execute the game's UnrealScript bytecode in a VM | Accepted |
 | [0007](0007-community-repositories.md) | Community repositories: which may be studied | Accepted |
+| [0008](0008-probe-the-original.md) | Measure the original with our own probe scripts | Accepted |
 
 ## Template (MADR-lite)
 

@@ -46,6 +46,7 @@ tools/
   uini.py            .ini parsing, package lookup, --deps
   compare_engine.py  C++ vs Python on every package of an install
   check_docs.py      documentation checker
+  probe/             our UnrealScript probe (OUProbe) + calibrate.py: measures the original on calibration maps (ADR 0008)
   test_*.py          unit tests on synthetic data
 ```
 
@@ -64,7 +65,7 @@ tools/
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
 | Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers agree with Python on all 396 packages (`compare_engine.py` compares counts and end offsets per object, not every value); level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load; `ut_mapview MAP --play` runs the match in the view (bots animated, movers moving, live actors full bright) |
 | UnrealScript VM (C++) | functions load (all 20,052 retail); objects with class defaults (all 1,604 retail classes), instance / default variables, contexts (None skipped with a warning), structs, static arrays, casts; states (dispatch through the state, labels, `GotoState`, auto state, latent `Sleep`, `tick`); control flow, script and native calls, out / optional parameters, ≈ 140 operator, string and math natives; 13 retail `TestInfo` self-tests pass; `--states` sweep: every class enters its auto state, none stops on an error. No iterators or engine natives yet |
-| World (C++) | all 83 maps load their actors, start `DeathMatchPlus` and run with no script error (`--maps`); timers, `ForEach` iterators, pawn list, spawn / destroy; physics against the BSP (falling, projectile, flying, rotating, walking with step-up) and BSP traces; touching; animation timing; bots spawn, roam the path network, pick up items, see and fight each other (instant-hit weapons through actor traces), die, score and respawn; no blocking between actors or sound |
+| World (C++) | all 83 maps load their actors, start `DeathMatchPlus` and run with no script error (`--maps`); timers, `ForEach` iterators, pawn list, spawn / destroy; physics against the BSP (falling, projectile, flying, rotating, walking with step-up) and BSP traces; touching; animation timing; bots spawn, roam the path network, pick up items, see and fight each other (instant-hit weapons through actor traces), die, score and respawn; actors block each other (`Bump`); no sound |
 | Network | not started |
 
 ## Commands
@@ -83,6 +84,7 @@ build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no 
 build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # drag to look, arrows, WASD fly
 build/ut_mapview <UT99_DIR> MAP --play [--time S --follow --shot out/x.png]   # the match running; F follows a bot
 python3 tools/check_docs.py                    # doc checks
+python3 tools/probe/calibrate.py MAPGEN_DIR steps   # the original: step height a walking pawn climbs (setup: DEVELOPMENT_GUIDE)
 python3 tools/upkg.py FILE [--names|--imports|--exports]
 python3 tools/uprops.py FILE OBJECT              # properties of one export
 python3 tools/uprops.py --sweep <UT99_DIR>       # parse every export, counts per class
