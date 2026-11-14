@@ -612,7 +612,7 @@ static void test_vm() {
     assert(vm.prop(walker, "Location")->t == VT::Vector && vm.prop(walker, "Physics")->t == VT::Byte);
     const float* at = vm.prop(walker, "Location")->v;
     assert(walker->vars[vm.object(p, 17)][0].i == 10 && other->vars[vm.object(p, 17)][0].i == 10);  // both touched once
-    assert(at[0] > 79 && at[0] < 80.5f && std::fabs(at[2] - 20) < 0.5f && vm.prop(walker, "Physics")->i == 1);
+    assert(at[0] > 79 && at[0] < 80.5f && std::fabs(at[2] - 24.8f) < 0.5f && vm.prop(walker, "Physics")->i == 1);
     assert(w.errors.empty());
     // Both block actors now: the walker, back at x = 0, stops where the cylinders meet (60 - 40) and does not touch.
     vm.prop(walker, "Location")->v[0] = 0;
@@ -637,6 +637,19 @@ static void test_vm() {
     vm.prop(walker, "bCollideActors")->i = 0;
     for (int k = 0; k < 20; k++) w.tick(0.05f);
     assert(wl[0] > 150 && wl[2] > 40 && !point_solid(ramp, {wl[0], wl[1], wl[2]}));
+    // A step from x = 100: the original climbs 29, not 30 (script.md, measured), from its 4.8 hover.
+    for (float rise : {29.f, 30.f}) {
+        Model stair;
+        Node ground{}, face{}, top{};
+        ground.plane[2] = 1, ground.back = -1, ground.front = 1;
+        face.plane[0] = -1, face.plane[3] = -100, face.front = -1, face.back = 2;
+        top.plane[2] = 1, top.plane[3] = rise, top.front = -1, top.back = -1;
+        stair.nodes = {ground, face, top};
+        w.set_model(stair);
+        wl[0] = 0, wl[1] = 0, wl[2] = 20;
+        for (int k = 0; k < 20; k++) w.tick(0.05f);
+        assert(rise < 29.5f ? wl[0] > 150 && std::fabs(wl[2] - rise - 24.8f) < 0.5f : wl[0] < 81 && wl[2] < 25.5f);
+    }
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);

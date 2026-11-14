@@ -192,7 +192,7 @@ void World::walk(Obj* o, float dt) {
         delta = {rest.x - dot * h.normal.x, rest.y - dot * h.normal.y, -dot * h.normal.z};
         h = move(o, delta);
     }
-    if (h.hit) {  // blocked (a wall, or a ramp foot the slide could not climb): step up (25, unverified), else slide
+    if (h.hit) {  // blocked (a wall, or a ramp foot the slide could not climb): step up 25 (from the hover below: climbs 29 as measured), else slide
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
         Value saved = *loc;
         move(o, {0, 0, 25});
@@ -234,6 +234,9 @@ void World::walk(Obj* o, float dt) {
         guarded(o, "Falling");
     } else {
         set_base(o, floor);  // the LevelInfo on BSP floors (unverified), else the mover it stands on
+        // Measured (script.md, probe OU-Steps): a walking pawn rests 4.8 above the floor, so a 25 step up from
+        // there climbs 29, not 30, as the original does.
+        move(o, {0, 0, 4.8f});
     }
 }
 

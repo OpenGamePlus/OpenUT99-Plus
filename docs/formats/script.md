@@ -125,9 +125,11 @@ Not yet: `new`, dynamic arrays, binary struct defaults (other than Vector / Rota
 
 ## Measured in the original
 
-With our probe ([ADR 0008](../architecture/adr/0008-probe-the-original.md); `tools/probe/calibrate.py`), on the 469f-rc5 Linux dedicated server, map `OU-Steps` (built with ut99-mapgen: floor z = 0, lanes of steps 16–40 high, checked solid / empty in its BSP). A `ProbePawn` (radius 17, height 39, `GroundSpeed` 400) falls to the floor, then walks with a latent `MoveTo` 1,500 units ahead:
+With our probe ([ADR 0008](../architecture/adr/0008-probe-the-original.md); `tools/probe/calibrate.py`), on the 469f-rc5 Linux dedicated server, maps built with ut99-mapgen (floor z = 0; `OU-Steps`: lanes of steps 16–40 high, floor and step tops checked solid / empty in its BSP). A `ProbePawn` (radius 17, height 39, `GroundSpeed` 400) falls to the floor, then walks with a latent `MoveTo` 1,500 units ahead:
 
 - A walking pawn rests with its centre 43.8 above the floor: 4.8 above `CollisionHeight` (on step tops likewise: 59.7 on a 16 step).
 - It climbs steps up to 29 high, not 30 (heights tried: 16, 24, 28, 29, 30, 31, 32, 40). Our reading, not measured: a step of 25 counted from the 4.8 hover gives 29.8.
 - A non-player pawn whose `Tick` sets `Acceleration` does not move: velocity stays 0. Bots move through latent moves.
+- Map `OU-Ramps` (true slopes, 192 units long): it walks up 45.5° (floor normal z 0.7009), not 45.7° (0.6984); angles tried 30–60 and 44.5, 45, 45.3, 45.5, 45.7, 46. The walkable-floor limit is normal z 0.7 (45.57°), as the engine uses.
+- On a slope it cannot walk it still gets about 120 units up (45.7°: from 43.8 to 166.3; 60°: to 134.5) before it stops.
 

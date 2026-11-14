@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — walking hover from the probe; floor limit verified
+
+- Walking pawns now hover 4.8 above the floor (measured) and step 25 from there: a synthetic test climbs 29, not 30, as the original. `--maps 60`: 5,328 units per bot (5,374), 97 deaths (88), bots still falling 50 (68), no script error.
+- `calibrate.py ramps` (true wedge brushes, `--angles`): the original walks 45.5° (normal z 0.7009), not 45.7° (0.6984), so the 0.7 floor limit holds. On steeper slopes it still gets about 120 units up, not compared yet.
+- Next: our VM running the same probe (mutator from the URL), so both engines answer each calibration; then slopes too steep to walk, falling bots.
+
 ## 2026-11-14 — the probe measures the original
 
 - [ADR 0008](../architecture/adr/0008-probe-the-original.md): `tools/probe/OUProbe` (our UnrealScript: a mutator spawning a `ProbePawn` at each PathNode, logging its state each tick) runs on the original's Linux dedicated server; `calibrate.py` compiles it, builds the map with ut99-mapgen, runs the server and reads the log.
