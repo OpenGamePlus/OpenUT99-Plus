@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — sliding on steep slopes measured and modelled
+
+- `calibrate.py slide` (`OU-Slide`, `ProbeDropper` dropped on 46–80° slopes): the original slides with 1 / (1 + nz²) of gravity's pull along the slope (fit within 0.003 at five angles, mechanism unknown). The engine applies it; ours matches within 0.3 %. Synthetic test on a 60° slope.
+- Still apart: walking into a too-steep slope, the original starts its slide at 347 along it (ours 278), so it gets to 171 where ours gets to 100. Simple rules tried do not fit.
+- `--maps 60`: 8,294 units per bot (8,348), 141 deaths, bots still falling 59 (same), inside solid only the two map-data items, no script error. Next: the walk-to-slide switch, with entry speeds varied.
+
 ## 2026-11-14 — air control measured: none from latent moves
 
 - `calibrate.py air` (`OU-Air`, `ProbeFaller`; the mutator reads `AirNN` PathNode tags as AirControl): a falling non-player pawn doing `MoveTo` gets no horizontal acceleration in the original, for AirControl 0 to 1; ours matches, gravity 950 in both.
