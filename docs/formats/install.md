@@ -1,6 +1,6 @@
 # Retail install layout
 
-Verified on the Steam release with the OldUnreal patch 469e (`System/Manifest.ini`: `Version=469e`).
+Verified on the Steam release with an OldUnreal 469 patch. `System/Manifest.ini` says `Version=469e`, but the packages are 469f-rc5: the 24 `System/*.u` the OldUnreal Linux release also ships are byte-identical to its v469f-rc5 build (9 differ from v469e, 4 from v469f-rc6; checked 2026-11-14). The manifest's version is stale.
 
 | Folder | Content | Files |
 |---|---|---|

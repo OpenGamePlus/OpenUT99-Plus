@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — ut99-mapgen set up; the install is 469f-rc5
+
+- ut99-mapgen ([ADR 0007](../architecture/adr/0007-community-repositories.md)) runs outside the repo on a copy of the install with the OldUnreal Linux patch; its self test passes (13/13). It builds our own calibration maps with the retail `ucc`; maps stay out of the repo.
+- Matching the patch found the install is 469f-rc5, not 469e: `Manifest.ini` says 469e, but the packages are byte-identical to the v469f-rc5 Linux release. Docs that called it 469e corrected (ADR 0006 and older stages keep the old name).
+- ADR 0007 corrected the same day: the UT Bible is a players' guide, not engine documentation. Next: a calibration map (steps, ramps, ledges) observed in the original and in our engine.
+
 ## 2026-11-14 — blocking between actors
 
 - `World::move` sweeps the moving centre against the cylinders of actors that block it (grown by both sizes); both must block the other's kind (`bBlockPlayers` toward a `bIsPlayer` pawn, else `bBlockActors`; inferred from retail defaults, unverified), so pawns block pawns and projectiles still touch them. A blocked move sends `Bump` both ways, falling and flying included (`HitWall` stays for BSP and movers).

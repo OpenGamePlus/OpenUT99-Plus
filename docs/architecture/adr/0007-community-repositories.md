@@ -11,7 +11,7 @@ Community projects around UT99 range from format documentation to exported game 
 
 Allowed (read and cite; copy no code from repositories without a compatible license):
 
-- UT Bible (`web.archive.org/web/20010603192939/http://www.ocrana.de/utbible/`): UnrealScript and engine documentation, for the VM ([ADR 0006](0006-unrealscript-execution.md)).
+- UT Bible (`web.archive.org/web/20010603192939/http://www.ocrana.de/utbible/`): a players' strategy guide (dodging, weapons, item timing), not engine documentation; at most a check of observed behaviour in phase D. (Corrected 2026-11-14, same day: first described as UnrealScript and engine documentation.)
 - `github.com/monteslu/ut99-mapgen` (MIT): builds `.unr` maps headless with the 469 `ucc exec`; a way to make small test maps of our own. Maps it builds stay out of the repo ([ADR 0001](0001-no-game-data.md)).
 - `github.com/Sektorka/UTCompress` (no license: read only): the `.uz` compressed package format, for downloads from servers ([ADR 0005](0005-network-compatibility.md)).
 

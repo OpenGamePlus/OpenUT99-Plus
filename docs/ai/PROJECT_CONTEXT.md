@@ -31,4 +31,4 @@ Clean-room reimplementation of the Unreal Engine 1 runtime as used by Unreal Tou
 
 ## Constraints
 
-- Input data: a retail install at `<UT99_DIR>`, Steam release with OldUnreal patch 469e (`System/Manifest.ini`).
+- Input data: a retail install at `<UT99_DIR>`, Steam release with OldUnreal patch 469f-rc5 (the manifest says 469e; see [install.md](../formats/install.md)).
