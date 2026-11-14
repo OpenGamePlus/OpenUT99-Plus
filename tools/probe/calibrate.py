@@ -1,12 +1,14 @@
 """Measure the original engine with our probe (ADR 0008).
 
-    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps [--angles A,B,...] [--seconds S] [--no-build]
+    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
 
 MAPGEN_DIR is a ut99-mapgen checkout set up as in DEVELOPMENT_GUIDE: ut/ holds a copy of the install with the
 OldUnreal Linux patch that matches it (the server we measure); make-469e/ holds a System with the v469e Linux patch,
 only to compile the probe (the 469f-rc5 Linux `ucc make` recurses forever into "Classes/./"). The runner compiles
 tools/probe/OUProbe there (the package lands in ~/.utpg/System, where the server finds it), builds the calibration
 map with mapgen, runs a dedicated server with the probe mutator and reads the probe lines from its log.
+--ours runs the same probe in our engine too (`ut_script ut/ --map MAP?mutator=... S` with UTVM_LOG=1) and reports
+both side by side.
 
 Each calibration is a map of lanes; a ProbePawn walks +x along each one toward an obstacle of growing rise. Reports,
 per lane, the obstacle, its rise and how high the pawn got: a pawn that gets over it is lifted by its rise.
@@ -26,7 +28,7 @@ RAMP_RUN = 192
 LANE_Y0, LANE_GAP = -1050, 300
 FLOOR = 0
 MAPS = {"steps": "OU-Steps", "ramps": "OU-Ramps"}
-PROBE_RE = re.compile(r"PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
+PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
 
 
 def parse_log(text):
@@ -127,6 +129,7 @@ def compile_probe(mapgen):
                          timeout=600, stdin=subprocess.DEVNULL)
     if "Success - 0 error(s)" not in log.stdout or not os.path.exists(out):
         raise SystemExit("ucc make failed:\n" + "\n".join((log.stdout + log.stderr).splitlines()[-20:]))
+    shutil.copy(out, os.path.join(mapgen, "ut", "System"))  # where our engine's package paths find it
 
 
 def run_server(game, map_name, seconds, log_path):
@@ -139,6 +142,13 @@ def run_server(game, map_name, seconds, log_path):
         server.terminate()
         server.wait(timeout=30)
     return open(log_path, encoding="latin-1").read()
+
+
+def run_ours(ut_script, game, map_name, seconds):
+    url = f"{map_name}?mutator=OUProbe.ProbeMutator"
+    res = subprocess.run([ut_script, game, "--map", url, str(seconds)], capture_output=True, text=True,
+                         env=dict(os.environ, UTVM_LOG="1"), timeout=600)
+    return res.stdout
 
 
 def main(argv):
@@ -157,11 +167,23 @@ def main(argv):
     tracks = parse_log(run_server(game, MAPS[kind], seconds, log_path))
     if not tracks:
         raise SystemExit(f"no probe lines in {log_path}")
+    ours = None
+    if "--ours" in argv:
+        ours = step_report(parse_log(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind],
+                                              seconds)))
     lanes = rises(kind)
-    print("lane      rise  rest z  top z  over")
+    print("lane      rise  original: rest z  top z  over" + ("   ours: rest z  top z  over" if ours is not None else ""))
     for lane, (rest_z, top) in sorted(step_report(tracks).items()):
         label, rise = lanes[lane] if 0 <= lane < len(lanes) else ("?", 0)
-        print(f"{label:>7} {rise:6.1f}  {rest_z:6.1f}  {top:5.1f}  {'yes' if rise and top - rest_z > rise - 2 else 'no'}")
+        row = f"{label:>7} {rise:6.1f}  {rest_z:16.1f}  {top:5.1f}  {over(rise, rest_z, top):4}"
+        if ours is not None:
+            o = ours.get(lane)
+            row += f"   {o[0]:12.1f}  {o[1]:5.1f}  {over(rise, *o):4}" if o else "   (no track)"
+        print(row)
+
+
+def over(rise, rest_z, top):
+    return "yes" if rise and top - rest_z > rise - 2 else "no"
 
 
 if __name__ == "__main__":

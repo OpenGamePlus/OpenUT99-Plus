@@ -2,6 +2,18 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — leaf hulls in the box trace; sliding on steep slopes
+
+- The Model's `leaf hulls` decoded (level.md): per solid cell, its planes and bounding box. The box trace checks a reached solid leaf against its hull (the box sides act as bevels): on the probe's ramps ours now matches the original to 0.2 at the crest (it rose 30 too high). C++ vs Python 0 differ; ASan/UBSan clean on all maps and two 20 s matches.
+- Walking into a slope too steep to walk turns to falling along it, and falling slides the rest of the tick, as the probe showed. Ours reaches 81 up a 46° slope, the original about 165: falling has no air control yet.
+- `--maps 60`: 8,348 units per bot (5,328), 139 deaths (97), no bot inside solid (shell cases and a dropped minigun are), bots still falling 59 (50), no script error. Next: measure air control with the probe.
+
+## 2026-11-14 — our VM runs the same probe
+
+- `ut_script --map MAP?mutator=Pkg.Class`: the URL options reach `InitGame`, so the retail game loads the mutator; `UTVM_LOG=1` prints every log line; spawned instances are numbered per class (ProbePawn0...). `calibrate.py --ours build/ut_script` reports both engines side by side.
+- Steps: identical. Ramps: past a crest ours rises ~30 too high (no bevel planes in the box trace) and ours climbs 45.7–46° slopes the original cannot.
+- Next: bevel planes in the box trace, checked with `calibrate.py ramps --ours`.
+
 ## 2026-11-14 — walking hover from the probe; floor limit verified
 
 - Walking pawns now hover 4.8 above the floor (measured) and step 25 from there: a synthetic test climbs 29, not 30, as the original. `--maps 60`: 5,328 units per bot (5,374), 97 deaths (88), bots still falling 50 (68), no script error.

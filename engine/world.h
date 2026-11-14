@@ -22,7 +22,9 @@ public:
     // Every actor of the map's Level becomes a live instance; then the game class (LevelInfo.DefaultGameType, else
     // default_game "Package.Class") is spawned as Level.Game (InitGame and play events come in begin_play).
     void load(const std::string& map, const std::string& default_game = "");
-    void begin_play();  // InitGame, then PreBeginPlay, BeginPlay, PostBeginPlay, SetInitialState phase by phase
+    // InitGame(options: the URL's "?Key=Value" part, e.g. ?mutator=Pkg.Class), then PreBeginPlay, BeginPlay,
+    // PostBeginPlay, SetInitialState phase by phase.
+    void begin_play(const std::string& options = "");
     void tick(float dt);                   // Level.TimeSeconds, Tick events, timers, state code
     Obj* spawn(Obj* cls, Obj* spawner, Obj* owner, const std::string* tag, const Value* loc, const Value* rot);
 

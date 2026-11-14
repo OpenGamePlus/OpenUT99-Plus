@@ -132,4 +132,7 @@ With our probe ([ADR 0008](../architecture/adr/0008-probe-the-original.md); `too
 - A non-player pawn whose `Tick` sets `Acceleration` does not move: velocity stays 0. Bots move through latent moves.
 - Map `OU-Ramps` (true slopes, 192 units long): it walks up 45.5° (floor normal z 0.7009), not 45.7° (0.6984); angles tried 30–60 and 44.5, 45, 45.3, 45.5, 45.7, 46. The walkable-floor limit is normal z 0.7 (45.57°), as the engine uses.
 - On a slope it cannot walk it still gets about 120 units up (45.7°: from 43.8 to 166.3; 60°: to 134.5) before it stops.
+- On a slope its centre stays about 21.8 above the surface under it (45°: 4.8 hover + 17, the radius): the cylinder collides with the BSP as a box, in the original as in ours.
+- Walking into a slope too steep to walk (45.7°, 46°), the original turns to falling (`Physics` 2) with its velocity along the slope (246, 245 a tick later), slides up while gravity slows it, stops (about 161–172 high, varying between runs) and slides back. Its horizontal speed still grows a little while sliding: falling keeps some acceleration (air control), not measured yet.
+- Our engine running the same probe (`--ours`, 2026-11-14): steps identical (rest 43.9, climbs 29, not 30); walkable ramps identical to 0.2 since the trace uses leaf hulls ([level.md](level.md#collision-engine); before, past a crest ours rose about 30 units too high). On the too-steep slopes ours now slides up the same way but reaches about 81, not 165: our falling has no air control.
 

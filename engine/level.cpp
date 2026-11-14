@@ -76,7 +76,7 @@ static void read_model_into(Reader& r, Model& m) {
         r.need(25);
         r.pos += 25;  // bounds
     }
-    for (size_t i = count(r); i--;) r.i32();  // leaf hulls
+    for (size_t i = count(r); i--;) m.leaf_hulls.push_back(r.i32());
     for (size_t i = count(r); i--;) {
         r.index(), r.index(), r.index();
         u64(r);  // leaves
@@ -110,6 +110,14 @@ void validate_model(const Model& m) {
     for (const Node& n : m.nodes)
         for (int i = 0; i < n.num_vertices; i++)
             if (!in(m.verts[size_t(n.vert_pool + i)].point, m.points.size())) throw std::runtime_error("node vertex out of range");
+    for (const Node& n : m.nodes) {  // collision hulls: node refs up to -1, then a 6-float box, all inside the array
+        if (n.collision_bound < 0) continue;
+        size_t i = size_t(n.collision_bound);
+        for (; i < m.leaf_hulls.size() && m.leaf_hulls[i] != -1; i++)
+            if (m.leaf_hulls[i] < 0 || !in(m.leaf_hulls[i] & 0x3FFFFFFF, m.nodes.size()) || (m.leaf_hulls[i] & 0x80000000))
+                throw std::runtime_error("leaf hull node out of range");
+        if (i + 7 > m.leaf_hulls.size()) throw std::runtime_error("leaf hull past the array");
+    }
     for (const LightMap& l : m.lightmaps) {
         if (l.uclamp < 1 || l.uclamp > 2048 || l.vclamp < 1 || l.vclamp > 2048 || !(l.uscale > 0) || !(l.vscale > 0) ||
             l.data_offset < 0 || (l.light_actors != -1 && !in(l.light_actors, m.lights.size())))

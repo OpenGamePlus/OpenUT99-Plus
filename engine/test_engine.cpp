@@ -678,6 +678,24 @@ static void test_collision() {
     assert(trace(m, {0, 0, 5}, {0, 0, -50}, {10, 10, 10}).time < 0.05f);  // but cannot sink further
     h = trace(m, {95, 0, 60}, {95, 0, 0}, {10, 10, 10});  // box overlapping the wall slides down along it to the floor
     assert(h.hit && h.normal.z == 1 && std::fabs(h.time - 50.f / 60.f) < 0.01f);
+    // Leaf hull: the floor's solid only spans x, y in [-100, 100] (z -1000..0). A box coming down beyond it does
+    // not hit (the expanded plane alone would say it does); inside it lands as before; one coming in sideways at
+    // floor height hits the hull's box side (a bevel).
+    Model slab;
+    Node top{};
+    top.plane[2] = 1, top.back = -1, top.front = -1, top.collision_bound = 0;
+    slab.nodes = {top};
+    slab.leaf_hulls = {0, -1};
+    for (float f : {-100.f, -100.f, -1000.f, 100.f, 100.f, 0.f}) {
+        int32_t bits;
+        std::memcpy(&bits, &f, 4);
+        slab.leaf_hulls.push_back(bits);
+    }
+    assert(!trace(slab, {150, 0, 100}, {150, 0, -100}, {10, 10, 10}).hit);
+    h = trace(slab, {50, 0, 100}, {50, 0, -100}, {10, 10, 10});
+    assert(h.hit && std::fabs(h.time - 0.45f) < 0.01f && h.normal.z == 1);
+    h = trace(slab, {200, 0, -5}, {0, 0, -5}, {10, 10, 10});
+    assert(h.hit && std::fabs(h.time - 0.45f) < 0.01f && h.normal.x == 1);
     float t = 1;
     Vec3 n{};
     assert(ray_cylinder({-100, 0, 0}, {100, 0, 0}, {0, 0, 0}, 10, 20, &t, &n) && std::fabs(t - 0.45f) < 1e-4f && n.x == -1);

@@ -107,17 +107,21 @@ void trace_from_env(ut::Vm& vm) {
     }
 }
 
-int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float seconds, const std::string& game) {
+int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& url, float seconds, const std::string& game) {
     trace_from_env(vm);
     ut::World w(vm, packages);
+    size_t q = url.find('?');  // MAP?Key=Value?...: the options go to InitGame, as in the game's URLs
+    std::string name = url.substr(0, q), options = q == std::string::npos ? "" : url.substr(q);
     w.load(name, game);
     size_t loaded = w.actors.size();
-    w.begin_play();
+    w.begin_play(options);
     int ticks = int(seconds / 0.05f), pawns = 0, kills = 0;
     float travelled = 0;
     play(vm, w, seconds, &pawns, &travelled, &kills);
     std::map<std::string, int> lines;
     for (const std::string& l : vm.log) lines[l]++;
+    if (std::getenv("UTVM_LOG"))  // every log line in order (e.g. probe output, ADR 0008)
+        for (const std::string& l : vm.log) std::printf("%s\n", l.c_str());
     int errors = 0;
     for (const auto& [e, n] : w.errors) errors += n;
     std::printf("%s: %zu actors loaded, game %s, %zu actors after %d ticks; %d script errors, %zu log lines\n",

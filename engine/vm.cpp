@@ -506,6 +506,9 @@ Obj* Vm::spawn(Obj* cls) {
     Obj* o = instances_.back().get();
     o->cls = cls;
     o->vars = d->vars;
+    // shortcut: a per-class count from 0 (as the original names the first spawns, e.g. ProbePawn0); a spawn could
+    // repeat the name of a map actor of the same class. Upgrade if a script compares such names.
+    o->number = spawn_counts_[cls]++;
     return o;
 }
 
@@ -904,7 +907,8 @@ std::string Vm::name_of(const Obj* o) const {
             if (slot.get() == o) return n.substr(n.find('.') + 1);
         return "None";
     }
-    return o->cls->pkg->exports[size_t(o->cls->ref - 1)].name;  // shortcut: instances are not numbered yet
+    const std::string& cls = o->cls->pkg->exports[size_t(o->cls->ref - 1)].name;
+    return o->number < 0 ? cls : cls + std::to_string(o->number);
 }
 
 Obj* Vm::class_of(Obj* o) {

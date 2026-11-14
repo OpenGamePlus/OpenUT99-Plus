@@ -353,13 +353,15 @@ void World::load(const std::string& map, const std::string& default_game) {
     map_actors_ = actors.size();  // the map's actors, then the game
 }
 
-void World::begin_play() {
+void World::begin_play(const std::string& options) {
     // Play begins, then InitGame, then each phase over the map's actors and the game; actors spawned from here on
     // get their events at once (unverified order, inferred from what the retail scripts need: the mutator spawned in
     // InitGame must be ready before the map's actors ask it, and Level.Game must be set when the game's
     // PreBeginPlay spawns its GameReplicationInfo).
     begun_ = true;
-    if (game) guarded(game, "InitGame", {Value::of(VT::Str), Value::of(VT::Str)});  // Options, out Error
+    Value opts = Value::of(VT::Str);
+    opts.s = options;
+    if (game) guarded(game, "InitGame", {opts, Value::of(VT::Str)});  // Options, out Error
     size_t n = map_actors_;
     for (const char* event : {"PreBeginPlay", "BeginPlay", "PostBeginPlay", "SetInitialState"})
         for (size_t i = 0; i < n; i++)
@@ -518,8 +520,9 @@ Hit World::move(Obj* o, Vec3 d, Obj** what) {
         Vec3 ext{r ? r->f : 0, r ? r->f : 0, hh ? hh->f : 0};  // shortcut: the collision cylinder as a box
         h = trace_world(o, from, {from.x + d.x, from.y + d.y, from.z + d.z}, ext, what);
         Vec3 to{from.x + d.x * h.time, from.y + d.y * h.time, from.z + d.z * h.time};
-        // shortcut: expanded planes (no bevels) can let a box sink at convex edges; the exact point test refuses a
-        // move that takes the centre from empty space into solid. Upgrade with bevel planes.
+        // shortcut: mover brushes have no leaf hulls (no bevels), so a box may still sink at their convex edges; the
+        // exact point test refuses a move that takes the centre from empty space into solid. Drop it once movers get
+        // bevels and the sweep shows no actor ending inside solid.
         if (has_model_ && !point_solid(model_, from) && point_solid(model_, to)) {
             if (what) *what = level_info;
             float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
@@ -613,6 +616,12 @@ void World::physics(Obj* o, float dt) {
                 wall(h);
                 float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
                 v[0] -= dot * h.normal.x, v[1] -= dot * h.normal.y, v[2] -= dot * h.normal.z;
+                // Slide the rest of the tick along the surface (a pawn sliding on a slope too steep to walk keeps
+                // moving, as measured in the original: script.md). shortcut: one slide; a second hit waits a tick.
+                if (mode->i == 2 && !deleted_.count(o)) {
+                    float rest = (1 - h.time) * dt;
+                    move(o, {v[0] * rest, v[1] * rest, v[2] * rest});
+                }
             }
             return;
         }

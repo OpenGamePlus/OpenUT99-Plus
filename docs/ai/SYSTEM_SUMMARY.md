@@ -79,12 +79,12 @@ build/ut_mapview <UT99_DIR> --check             # every map loads: "83 maps, 0 e
 build/ut_script <UT99_DIR> Engine.TestInfo.TestSwitch   # run a script function: return value, out parameters, log
 build/ut_script <UT99_DIR> --states                # phase C meter: auto state of every class, missing natives ranked
 build/ut_script <UT99_DIR> --run Package.Class [TICKS]   # spawn, auto state, tick its state code
-build/ut_script <UT99_DIR> --map MAP [SECONDS]      # play a map's script: errors and log ranked
-build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no errors, pawns travelled; inside solid (listed with the map): BioAmmo / UT_invisibility (map data), at most a lift rider (riders carried without collision)
+build/ut_script <UT99_DIR> --map MAP[?Key=Value...] [SECONDS]   # play a map's script (options go to InitGame, e.g. ?mutator=Pkg.Class): errors and log ranked; UTVM_LOG=1 prints every log line
+build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no errors, pawns travelled; inside solid (listed with the map): BioAmmo / UT_invisibility (map data), at most a few small dropped items or a lift rider
 build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # drag to look, arrows, WASD fly
 build/ut_mapview <UT99_DIR> MAP --play [--time S --follow --shot out/x.png]   # the match running; F follows a bot
 python3 tools/check_docs.py                    # doc checks
-python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps [--angles A,B]   # the original: steps / slopes a walking pawn gets over (setup: DEVELOPMENT_GUIDE)
+python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps [--angles A,B] [--ours build/ut_script]   # the original (and ours): steps / slopes a walking pawn gets over (setup: DEVELOPMENT_GUIDE)
 python3 tools/upkg.py FILE [--names|--imports|--exports]
 python3 tools/uprops.py FILE OBJECT              # properties of one export
 python3 tools/uprops.py --sweep <UT99_DIR>       # parse every export, counts per class

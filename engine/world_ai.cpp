@@ -186,6 +186,16 @@ void World::walk(Obj* o, float dt) {
         n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
         if (movers_.count(blocker) && !deleted_.count(o)) guarded(o, "HitWall", {n, b});
     }
+    if (h.hit && h.normal.z > 0.05f && h.normal.z < 0.7f) {
+        // A slope too steep to walk: the original turns to falling with the velocity along the slope and slides up
+        // until gravity brings it back (probe OU-Ramps, 45.7-60 deg; the trigger rule is inferred, unverified).
+        float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
+        for (int k = 0; k < 3; k++) v[k] -= dot * (&h.normal.x)[k];
+        vm_.prop(o, "Physics")->i = 2;
+        set_base(o, nullptr);
+        guarded(o, "Falling");
+        return;
+    }
     for (int k = 0; k < 2 && h.hit && h.normal.z >= 0.7f; k++) {  // a ramp: go on along its surface
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
         float dot = rest.x * h.normal.x + rest.y * h.normal.y;
