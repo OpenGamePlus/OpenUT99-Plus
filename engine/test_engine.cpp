@@ -679,6 +679,12 @@ static void test_vm() {
     float s0 = speed();
     for (int k = 0; k < 5; k++) w.tick(0.05f);
     assert(vm.prop(walker, "Physics")->i == 2 && wv[0] < 0 && std::fabs((speed() - s0) / 0.25f - 658.2f) < 10);
+    // Falling moves by the tick's mean velocity: from rest, 950 * dt^2 / 2 in the first tick (probe OU-Ledge).
+    w.set_model(room);
+    wl[0] = 0, wl[1] = 0, wl[2] = 500;
+    wv[0] = wv[1] = wv[2] = 0;
+    w.tick(0.05f);
+    assert(std::fabs(wl[2] - (500 - 950 * 0.05f * 0.05f / 2)) < 0.02f);
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);

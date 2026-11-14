@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "probe"))
-from calibrate import LANE_GAP, LANE_Y0, air_report, entry_report, parse_log, slide_report, step_report  # noqa: E402
+from calibrate import LANE_GAP, LANE_Y0, air_report, entry_report, ledge_report, parse_log, slide_report, step_report  # noqa: E402
 
 LOG = """Log: Bringing Level OU-Steps.MyLevel up for play (20)...
 ScriptLog: PROBE ProbePawn0 0.25 0.00 -1050.00 45.00 2 0.00 0.00 -200.00
@@ -47,6 +47,15 @@ class ProbeLogTest(unittest.TestCase):
         along, top = entry_report({"P": track})[0]
         self.assertAlmostEqual(along[0], 100.0, places=3)
         self.assertEqual((len(along), top), (2, 60))
+
+    def test_ledge_report(self):
+        y = LANE_Y0 + LANE_GAP  # lane 1
+        track = [(0.3, 0, y, 60, 2, 0, 0, -50), (0.5, 0, y, 44, 1, 0, 0, 0),  # spawn drop, then rest
+                 (1.0, 238, y, 85, 2, 44, 0, 272), (1.5, 260, y, 124, 2, 70, 0, 10),  # jump against the ledge
+                 (1.8, 300, y, 108, 1, 400, 0, 0), (2.5, 1100, y, 44, 1, 400, 0, 0)]  # on top, then off its end
+        self.assertEqual(ledge_report({"P": track}), {1: (44, True, 124, 108)})
+        stuck = [(0.5, 0, y, 44, 1, 0, 0, 0), (1.0, 238, y, 44, 1, 0, 0, 0)]
+        self.assertEqual(ledge_report({"P": stuck}), {1: (44, False, 44, None)})
 
 
 if __name__ == "__main__":

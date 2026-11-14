@@ -216,16 +216,19 @@ void World::walk(Obj* o, float dt) {
             *loc = saved;
             float dot = rest.x * h.normal.x + rest.y * h.normal.y;
             move(o, {rest.x - dot * h.normal.x, rest.y - dot * h.normal.y, 0});
-            // A ledge higher than a step with the destination above it: jump if the pawn can (unverified rule).
-            const Value* dest = vm_.prop(o, "Destination");
-            const Value* can = vm_.prop(o, "bCanJump");
-            const Value* jz = vm_.prop(o, "JumpZ");
-            // Navigation points sit at a standing pawn's centre height, so compare centres.
-            if (alen > 0 && dest && can && can->i && jz && jz->f > 0 && dest->v[2] > loc->v[2] + 25) {
-                v[2] = jz->f;
-                vm_.prop(o, "Physics")->i = 2;
-                set_base(o, nullptr);
-                return;
+            // The original sends HitWall for walls too (probe OU-Ledge); bots answer with PickWallAdjust, which may jump.
+            // It does not jump by itself, even with bCanJump and the goal on the ledge.
+            if (!blocker || blocker == level_info) {
+                Value b = Value::of(VT::Object), n = Value::of(VT::Vector);
+                b.o = level_info;
+                n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
+                guarded(o, "HitWall", {n, b});
+                if (deleted_.count(o)) return;
+                if (vm_.prop(o, "Physics")->i == 2) {  // jumped (PickWallAdjust): from the step's height, falling the
+                    move(o, {0, 0, 25});                // rest of the tick, as measured (probe OU-Ledge)
+                    physics(o, dt * (1 - h.time));
+                }
+                if (vm_.prop(o, "Physics")->i != 1) return;
             }
         }
     }
@@ -354,7 +357,10 @@ void World::register_ai() {
                 if (acc) acc->v[0] = acc->v[1] = acc->v[2] = 0;
                 return true;
             }
-            if (acc) acc->v[0] = to.x - at.x, acc->v[1] = to.y - at.y, acc->v[2] = 0;
+            // A falling pawn keeps the Acceleration it had (air control from its walk, none from a move begun in the
+            // air: probes OU-Ledge, OU-Air).
+            const Value* phys = vm_.prop(self, "Physics");
+            if (acc && !(phys && phys->i == 2)) acc->v[0] = to.x - at.x, acc->v[1] = to.y - at.y, acc->v[2] = 0;
             return false;
         };
         if (steer()) self->sleep = 0;  // already there: still a latent call, it ends on the next tick
@@ -392,7 +398,33 @@ void World::register_ai() {
     vm.add_native("StopWaiting", [](Obj* self, std::vector<Value*>&, Value&) {  // ends a latent Sleep
         if (self && self->sleep > 0) self->sleep = 0;
     });
-    vm.add_native("PickWallAdjust", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: never finds one
+    // PickWallAdjust: measured (probe OU-Ledge) for a walking pawn blocked by a ledge (JumpZ 325): up to 77 high
+    // (72.2 above its feet) True, falling, Velocity GroundSpeed toward Destination and JumpZ up; 78 and up False, and
+    // False while falling. shortcut: the test is ours (the box raised by the apex + 17 fits a radius further on; the
+    // 17 is fitted at JumpZ 325 only), no sideways adjust.
+    vm.add_native("PickWallAdjust", [this](Obj* self, std::vector<Value*>&, Value& r) {
+        Value* mode = vm_.prop(self, "Physics");
+        const Value* can = vm_.prop(self, "bCanJump");
+        const Value* jz = vm_.prop(self, "JumpZ");
+        const Value* gs = vm_.prop(self, "GroundSpeed");
+        const Value* rv = vm_.prop(self, "CollisionRadius");
+        const Value* hv = vm_.prop(self, "CollisionHeight");
+        if (!mode || mode->i != 1 || !can || !can->i || !jz || jz->f <= 0 || !rv || !hv) return;
+        Vec3 at = vec_of(vm_.prop(self, "Location")), to = vec_of(vm_.prop(self, "Destination"));
+        float dx = to.x - at.x, dy = to.y - at.y, len = std::sqrt(dx * dx + dy * dy);
+        if (len < 1) return;
+        dx /= len, dy /= len;
+        float apex = jz->f * jz->f / (2 * 950) + 17, reach = rv->f * 2;
+        Vec3 ext{rv->f, rv->f, hv->f}, up{at.x, at.y, at.z + apex};
+        if (trace_world(self, at, up, ext).hit || trace_world(self, up, {up.x + dx * reach, up.y + dy * reach, up.z}, ext).hit)
+            return;
+        float speed = gs ? gs->f : 400;
+        Value* v = vm_.prop(self, "Velocity");
+        v->v[0] = dx * speed, v->v[1] = dy * speed, v->v[2] = jz->f;
+        mode->i = 2;
+        set_base(self, nullptr);
+        r.i = 1;
+    });
     vm.add_native("EAdjustJump", [this](Obj* self, std::vector<Value*>&, Value& r) {  // shortcut: straight up jump
         const Value* v = vm_.prop(self, "Velocity");
         const Value* jz = vm_.prop(self, "JumpZ");

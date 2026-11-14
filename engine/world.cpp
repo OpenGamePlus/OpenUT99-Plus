@@ -598,11 +598,29 @@ void World::physics(Obj* o, float dt) {
             Obj* zone = loc ? zone_at({loc->v[0], loc->v[1], loc->v[2]}, nullptr, nullptr) : level_info;
             Value* g = vm_.prop(zone, "ZoneGravity");
             Value* term = vm_.prop(zone, "ZoneTerminalVelocity");
+            float v0[3] = {v[0], v[1], v[2]};
             for (int k = 0; k < 3; k++) v[k] += (g ? g->v[k] : (k == 2 ? -950.f : 0.f)) * dt;
+            // Air control (probe OU-Ledge): a pawn keeps the Acceleration its walk left (latent moves do not steer a
+            // falling pawn: OU-Air) and gains AirControl * AccelRate of it, 102.4 per s for 0.05 * 2048 as measured.
+            // shortcut: capped at GroundSpeed, unverified.
+            if (const Value* pawn = vm_.prop(o, "bIsPawn"); pawn && pawn->i) {
+                const Value* av = vm_.prop(o, "Acceleration");
+                Vec3 a = av ? Vec3{av->v[0], av->v[1], 0} : Vec3{0, 0, 0};
+                const Value* ac = vm_.prop(o, "AirControl");
+                const Value* rate = vm_.prop(o, "AccelRate");
+                const Value* gs = vm_.prop(o, "GroundSpeed");
+                float alen = std::sqrt(a.x * a.x + a.y * a.y), cap = gs ? gs->f : 400;
+                if (alen > 0 && ac && rate) {
+                    v[0] += a.x / alen * rate->f * ac->f * dt, v[1] += a.y / alen * rate->f * ac->f * dt;
+                    float hs = std::sqrt(v[0] * v[0] + v[1] * v[1]);
+                    if (hs > cap) v[0] *= cap / hs, v[1] *= cap / hs;
+                }
+            }
             float speed = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
             if (term && term->f > 0 && speed > term->f)
                 for (int k = 0; k < 3; k++) v[k] *= term->f / speed;
-            Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt}, &hit_actor);
+            // Moves by the tick's mean velocity (probe OU-Ledge: a drop from rest falls 52.36 / 2 * dt in its first tick).
+            Hit h = move(o, {(v0[0] + v[0]) / 2 * dt, (v0[1] + v[1]) / 2 * dt, (v0[2] + v[2]) / 2 * dt}, &hit_actor);
             if (!h.hit) return;
             auto land = [&](const Hit& floor) {
                 guarded(o, "Landed", {hit_value(floor)});

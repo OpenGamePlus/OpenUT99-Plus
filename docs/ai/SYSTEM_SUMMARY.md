@@ -84,7 +84,7 @@ build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no 
 build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # drag to look, arrows, WASD fly
 build/ut_mapview <UT99_DIR> MAP --play [--time S --follow --shot out/x.png]   # the match running; F follows a bot
 python3 tools/check_docs.py                    # doc checks
-python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry [--angles A,B] [--ours build/ut_script]   # the original (and ours): steps / slopes a walking pawn gets over, air control, sliding, walking into steep slopes (setup: DEVELOPMENT_GUIDE)
+python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry|ledge [--angles A,B] [--ours build/ut_script]   # the original (and ours): steps / slopes a walking pawn gets over, air control, sliding, walking into steep slopes, jumping ledges (setup: DEVELOPMENT_GUIDE)
 python3 tools/upkg.py FILE [--names|--imports|--exports]
 python3 tools/uprops.py FILE OBJECT              # properties of one export
 python3 tools/uprops.py --sweep <UT99_DIR>       # parse every export, counts per class
