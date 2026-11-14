@@ -1,6 +1,6 @@
 """Measure the original engine with our probe (ADR 0008).
 
-    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
+    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
 
 MAPGEN_DIR is a ut99-mapgen checkout set up as in DEVELOPMENT_GUIDE: ut/ holds a copy of the install with the
 OldUnreal Linux patch that matches it (the server we measure); make-469e/ holds a System with the v469e Linux patch,
@@ -17,6 +17,9 @@ per lane, the obstacle, its rise and how high the pawn got: a pawn that gets ove
 reports its mean horizontal acceleration while falling and its top horizontal speed.
 "slide": a ProbeDropper per lane dropped on a slope too steep to walk (wedges 400 high, --angles applies); reports
 its steady acceleration along the slope while it slides down, against 950 sin(angle) (all of gravity along it).
+"entry": ProbePawns walk into slopes too steep to walk (wedges 300 high) at several GroundSpeeds and angles; reports
+the speed along the slope on the first ticks after the switch to falling and how high each gets (--angles: lanes
+at those angles, all at 400).
 """
 import math
 import os
@@ -34,9 +37,11 @@ AIR_Z = 1800
 SLIDE_ANGLES = [46, 50, 60, 70, 80]
 SLIDE_RISE = 400
 GRAVITY = 950
+ENTRY_LANES = [(46, 100), (46, 200), (46, 300), (46, 400), (46, 600), (55, 400), (65, 400), (80, 400)]
+ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
 FLOOR = 0
-MAPS = {"steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide"}
+MAPS = {"steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
 
 
@@ -96,6 +101,8 @@ def rises(kind):
         return [(f"air {c:g}", c) for c in AIR_CONTROLS]
     if kind == "slide":
         return [(f"{a:g} deg", a) for a in SLIDE_ANGLES]
+    if kind == "entry":
+        return [(f"{a:g}d {v}", a) for a, v in ENTRY_LANES]
     return [(f"{a} deg", RAMP_RUN * math.tan(math.radians(a))) for a in RAMP_ANGLES]
 
 
@@ -126,6 +133,23 @@ def slide_report(tracks):
     return out
 
 
+def entry_report(tracks):
+    """{lane: (speed along the slope on the first three falling ticks after walking, highest z)}."""
+    out = {}
+    for samples in tracks.values():
+        lane = lane_of(samples[0][2])
+        if not 0 <= lane < len(ENTRY_LANES):
+            continue
+        angle = math.radians(ENTRY_LANES[lane][0])
+        walked = [i for i, s in enumerate(samples) if s[0] > 0.5 and s[4] == 1]
+        start = next((i for i in range(walked[0] if walked else len(samples), len(samples)) if samples[i][4] == 2), None)
+        if start is None:
+            continue
+        along = [s[5] * math.cos(angle) + s[7] * math.sin(angle) for s in samples[start:start + 3]]
+        out[lane] = (along, max(s[3] for s in samples))
+    return out
+
+
 def build_lanes(mapgen, kind):
     sys.path.insert(0, os.path.join(mapgen, "tools"))
     from build import Map
@@ -134,13 +158,19 @@ def build_lanes(mapgen, kind):
     m = Map(MAPS[kind])
     lanes = rises(kind)
     y_top = LANE_Y0 + LANE_GAP * len(lanes)
-    height = {"air": 2048, "slide": 1024}.get(kind, 512)
+    height = {"air": 2048, "slide": 1024, "entry": 1024}.get(kind, 512)
     m.add(box(-512, LANE_Y0 - 350, FLOOR, 2048, y_top + 100, FLOOR + height,
               floor="UTtech1.bmFloor", walls="UTtech1.bmwall3", ceiling="UTtech1.bmFloor"))
     for i, (_, rise) in enumerate(lanes):
         y = LANE_Y0 + i * LANE_GAP
         if kind == "air":
             m.actor("PathNode", 0, y, FLOOR + AIR_Z, Tag=f"Air{round(rise * 100)}")
+            continue
+        if kind == "entry":
+            angle, walk = ENTRY_LANES[i]
+            run = ENTRY_RISE / math.tan(math.radians(angle))
+            m.add(wedge(256, 256 + run, y - 100, y + 100, FLOOR, FLOOR + ENTRY_RISE, "UTtech1.bmTrim", f"Lane{i}"))
+            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Walk{walk}")
             continue
         if kind == "slide":  # rise is the angle; the dropper lands three quarters up the slope
             run = SLIDE_RISE / math.tan(math.radians(rise))
@@ -209,7 +239,10 @@ def main(argv):
     seconds = float(argv[argv.index("--seconds") + 1]) if "--seconds" in argv else 12
     if "--angles" in argv:
         angles = [float(a) for a in argv[argv.index("--angles") + 1].split(",")]
-        (SLIDE_ANGLES if kind == "slide" else RAMP_ANGLES)[:] = angles
+        if kind == "entry":
+            ENTRY_LANES[:] = [(a, 400) for a in angles]
+        else:
+            (SLIDE_ANGLES if kind == "slide" else RAMP_ANGLES)[:] = angles
     if "--no-build" not in argv:
         compile_probe(mapgen)
         build_lanes(mapgen, kind)
@@ -219,10 +252,19 @@ def main(argv):
     if not tracks:
         raise SystemExit(f"no probe lines in {log_path}")
     ours = None
-    report = {"air": air_report, "slide": slide_report}.get(kind, step_report)
+    report = {"air": air_report, "slide": slide_report, "entry": entry_report}.get(kind, step_report)
     if "--ours" in argv:
         ours = report(parse_log(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind], seconds)))
     lanes = rises(kind)
+    if kind == "entry":
+        print("lane       original: along slope (3 ticks)  top z" + ("   ours: along slope (3 ticks)  top z" if ours else ""))
+        fmt = lambda e: " ".join(f"{a:6.1f}" for a in e[0]) + f"  {e[1]:6.1f}"
+        for lane, e in sorted(report(tracks).items()):
+            row = f"{lanes[lane][0]:>8}   {fmt(e):>32}"
+            if ours is not None:
+                row += f"   {fmt(ours[lane]):>28}" if lane in ours else "   (no track)"
+            print(row)
+        return
     if kind == "slide":
         print("lane      all gravity  original: accel" + ("   ours: accel" if ours is not None else ""))
         for lane, acc in sorted(report(tracks).items()):

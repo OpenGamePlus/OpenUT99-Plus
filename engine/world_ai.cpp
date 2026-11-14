@@ -186,9 +186,10 @@ void World::walk(Obj* o, float dt) {
         n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
         if (movers_.count(blocker) && !deleted_.count(o)) guarded(o, "HitWall", {n, b});
     }
-    if (h.hit && h.normal.z > 0.05f && h.normal.z < 0.7f) {
-        // A slope too steep to walk: the original turns to falling with the velocity along the slope and slides up
-        // until gravity brings it back (probe OU-Ramps, 45.7-60 deg; the trigger rule is inferred, unverified).
+    if (h.hit && h.normal.z >= 0.263f && h.normal.z < 0.7f) {
+        // A slope too steep to walk: the original turns to falling and slides up until gravity brings it back. It
+        // does so up to 74.5 deg (normal z 0.267) and treats 75 deg (0.259) and steeper as a wall (probe OU-Entry,
+        // script.md). shortcut: velocity projected on the slope; the original's start speed differs (script.md).
         float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
         for (int k = 0; k < 3; k++) v[k] -= dot * (&h.normal.x)[k];
         vm_.prop(o, "Physics")->i = 2;
@@ -207,8 +208,11 @@ void World::walk(Obj* o, float dt) {
         Value saved = *loc;
         move(o, {0, 0, 25});
         Hit fwd = move(o, rest);
-        move(o, {0, 0, -25});
-        if (fwd.time < 0.1f) {
+        Hit settle = move(o, {0, 0, -25});
+        // A step only counts onto walkable floor: stepping onto a steep face would climb walls 25 at a time (the
+        // original stops at 75 deg and steeper: probe OU-Entry).
+        bool onto_steep = settle.hit && settle.normal.z < 0.7f;
+        if (fwd.time < 0.1f || onto_steep) {
             *loc = saved;
             float dot = rest.x * h.normal.x + rest.y * h.normal.y;
             move(o, {rest.x - dot * h.normal.x, rest.y - dot * h.normal.y, 0});
@@ -245,8 +249,9 @@ void World::walk(Obj* o, float dt) {
     } else {
         set_base(o, floor);  // the LevelInfo on BSP floors (unverified), else the mover it stands on
         // Measured (script.md, probe OU-Steps): a walking pawn rests 4.8 above the floor, so a 25 step up from
-        // there climbs 29, not 30, as the original does.
-        move(o, {0, 0, 4.8f});
+        // there climbs 29, not 30, as the original does. Only over walkable floor: lifting off a steep face the
+        // probe touched first would climb it 4.8 a tick (the original stays put at a 75 deg face: OU-Entry).
+        if (down.normal.z >= 0.7f) move(o, {0, 0, 4.8f});
     }
 }
 

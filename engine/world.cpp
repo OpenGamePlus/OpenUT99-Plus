@@ -604,14 +604,17 @@ void World::physics(Obj* o, float dt) {
                 for (int k = 0; k < 3; k++) v[k] *= term->f / speed;
             Hit h = move(o, {v[0] * dt, v[1] * dt, v[2] * dt}, &hit_actor);
             if (!h.hit) return;
-            if (h.normal.z >= 0.7f) {
-                guarded(o, "Landed", {hit_value(h)});
+            auto land = [&](const Hit& floor) {
+                guarded(o, "Landed", {hit_value(floor)});
                 if (mode->i == 2) {  // Landed did not change physics
                     Value* pawn = vm_.prop(o, "bIsPawn");
                     mode->i = pawn && pawn->i ? 1 : 0;
                     v[2] = 0;
                     if (mode->i == 0) v[0] = v[1] = 0;
                 }
+            };
+            if (h.normal.z >= 0.7f) {
+                land(h);
             } else {
                 wall(h);
                 float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
@@ -628,7 +631,10 @@ void World::physics(Obj* o, float dt) {
                 // moving, as measured in the original: script.md). shortcut: one slide; a second hit waits a tick.
                 if (mode->i == 2 && !deleted_.count(o)) {
                     float rest = (1 - h.time) * dt;
-                    move(o, {v[0] * rest, v[1] * rest, v[2] * rest});
+                    Hit slid = move(o, {v[0] * rest, v[1] * rest, v[2] * rest});
+                    // Sliding down into a floor lands; otherwise a pawn wedged between a floor and a steep face
+                    // would only ever hit the face and fall forever.
+                    if (slid.hit && slid.normal.z >= 0.7f && !deleted_.count(o)) land(slid);
                 }
             }
             return;
