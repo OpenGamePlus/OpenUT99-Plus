@@ -2,11 +2,12 @@
 
 <p align="center"><img src="docs/banner.svg" alt="OpenUT99-Plus" width="100%"></p>
 
-![Status: research](https://img.shields.io/badge/status-research-orange)
-![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
-![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
-![C++17 | OpenGL 3.3](https://img.shields.io/badge/C%2B%2B17-OpenGL%203.3-lightgrey)
-![Unreal Tournament](https://img.shields.io/badge/Unreal-Tournament-6a4fb0)
+![Status: research](https://img.shields.io/badge/status-research-ff9b5a)
+![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1c2a44)
+![Platform: Linux](https://img.shields.io/badge/platform-Linux-7d8494)
+![C++17 | OpenGL 3.3](https://img.shields.io/badge/C%2B%2B17-OpenGL%203.3-7d8494)
+![Unreal Tournament](https://img.shields.io/badge/Unreal-Tournament-e2502a)
+[![Docs](https://img.shields.io/badge/docs-online-6fb6ff)](https://opengameplus.github.io/OpenUT99-Plus/)
 
 [Español](README.es.md) · [English](README.md) · [Português](README.pt.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · **Русский**
 
@@ -31,7 +32,7 @@
 - **Физика, измеренная на оригинале**: наши собственные скрипты-зонды работают на оригинальном выделенном сервере и точно записывают, как движутся пешки ([ADR 0008](docs/architecture/adr/0008-probe-the-original.md)). Ступени, проходимые склоны, скольжение по крутым склонам, граница стены и прыжок на уступ совпадают с оригиналом; начало скольжения пока нет.
 
 > [!NOTE]
-> **Стадия исследования.** Управления игроком пока нет: можно летать по любой карте или смотреть, как играют боты. Пока нет звука, HUD, меню и сети, а значительная часть физики и ИИ ещё временная ([известный долг](docs/roadmap/debt.md)).
+> **Стадия исследования.** Можно сыграть Deathmatch против ботов, летать по любой карте или смотреть, как играют боты. Пока нет звука, HUD, оружия в руках, меню и сети, а значительная часть физики и ИИ ещё временная ([известный долг](docs/roadmap/debt.md)).
 
 > [!IMPORTANT]
 > **Игровой контент не включён — используйте свои данные.** В этом репозитории только исходный код: никаких пакетов, карт, текстур, звуков, музыки или исполняемых файлов. Движок читает их из копии Unreal Tournament, которой **вы законно владеете**, здесь она называется `<UT99_DIR>`. Проверено с версией из Steam и патчем 469f от [OldUnreal](https://www.oldunreal.com/).
@@ -43,6 +44,7 @@
 ```sh
 build/ut_mapview "<UT99_DIR>" DM-Deck16][                    # полёт по карте
 build/ut_mapview "<UT99_DIR>" DM-Morpheus --play --follow    # смотреть, как играют боты, следуя за одним
+build/ut_mapview "<UT99_DIR>" DM-Deck16][ --player --mouse-free   # сыграть Deathmatch против ботов
 build/ut_script "<UT99_DIR>" --map DM-Codex 60               # без окна: минута матча, вывод в консоль
 ```
 
@@ -50,6 +52,7 @@ build/ut_script "<UT99_DIR>" --map DM-Codex 60               # без окна: 
 |---|---|
 | Обзор | удерживать кнопку мыши и тянуть, или стрелки |
 | Полёт | WASD, shift быстрее |
+| Игра (`--player`) | WASD — движение, мышь — обзор, левая / правая кнопка — огонь / альтернативный огонь, пробел — прыжок, Ctrl — присесть, 1-0 — оружие |
 | Просмотр матча | F — следовать за следующим ботом; Esc — выход |
 
 ## План развития

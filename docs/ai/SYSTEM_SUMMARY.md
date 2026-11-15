@@ -1,6 +1,6 @@
 # SYSTEM_SUMMARY
 
-Last updated: 2026-11-11. Phase: A (package loading) complete on retail data: every export byte-exact. B (C++ engine) in progress: textured BSP level viewer, all retail maps load. C started: the UnrealScript VM runs retail functions that need no objects.
+Last updated: 2026-11-15. Phase: A (package loading) complete on retail data: every export byte-exact. B (C++ engine): textured BSP viewer, all retail maps load and render. C (gameplay) in progress: the retail game runs in our UnrealScript VM, bots play Deathmatch on every map, and one human player can join and play (`ut_mapview --player`); no HUD, sound or first-person weapon.
 
 ## Tree
 
@@ -23,6 +23,7 @@ engine/
   world.{h,cpp}      map actors in the VM, play start, ticks, timers, physics, touching, animation, Actor natives
   world_ai.cpp       walking, path network, routes, latent moves (AI natives)
   world_mover.cpp    movers: brush collision, keyframe interpolation, bases, encroachment
+  world_player.cpp   the local player: Login, input into PlayerPawn, its view
   play_view.{h,cpp}  live actors of a running world as triangles each frame (animated meshes, mover brushes)
   lighting.{h,cpp}   lightmap luxels, shadow bits, light colours, atlas
   scene.{h,cpp}      map -> texture batches, lightmap atlas, sky, mesh actors, player starts
@@ -65,7 +66,7 @@ tools/
 | Mesh, LodMesh, SkeletalMesh, Animation | done, byte-exact; LodMesh frame checked visually |
 | Engine (C++) | ini + package lookup (0 missing dependencies); package, property, Model, class-default and LodMesh readers agree with Python on all 396 packages (`compare_engine.py` compares counts and end offsets per object, not every value); level viewer: textured BSP, baked lightmaps (colour model uncalibrated), sky zones, mesh actors (frame 0, full bright); all 83 maps load; `ut_mapview MAP --play` runs the match in the view (bots animated, movers moving, live actors full bright) |
 | UnrealScript VM (C++) | functions load (all 20,052 retail); objects with class defaults (all 1,604 retail classes), instance / default variables, contexts (None skipped with a warning), structs, static arrays, casts; states (dispatch through the state, labels, `GotoState`, auto state, latent `Sleep`, `tick`); control flow, script and native calls, out / optional parameters, ≈ 140 operator, string and math natives; 13 retail `TestInfo` self-tests pass; `--states` sweep: every class enters its auto state, none stops on an error. No iterators or engine natives yet |
-| World (C++) | all 83 maps load their actors, start `DeathMatchPlus` and run with no script error (`--maps`); timers, `ForEach` iterators, pawn list, spawn / destroy; physics against the BSP (falling, projectile, flying, rotating, walking with step-up) and BSP traces; touching; animation timing; bots spawn, roam the path network, pick up items, see and fight each other (instant-hit weapons through actor traces), die, score and respawn; actors block each other (`Bump`); no sound |
+| World (C++) | all 83 maps load their actors, start `DeathMatchPlus` and run with no script error (`--maps`); timers, `ForEach` iterators, pawn list, spawn / destroy; physics against the BSP (falling, projectile, flying, rotating, walking with step-up) and BSP traces; touching; animation timing; bots spawn, roam the path network, pick up items, see and fight each other (instant-hit weapons through actor traces), die, score and respawn; a human player joins through `Login` and plays through the retail `PlayerPawn` script (`world_player.cpp`: input variables, `PlayerInput` / `PlayerTick`, `PlayerCalcView`); actors block each other (`Bump`); no sound |
 | Network | not started |
 
 ## Commands
@@ -79,10 +80,12 @@ build/ut_mapview <UT99_DIR> --check             # every map loads: "83 maps, 0 e
 build/ut_script <UT99_DIR> Engine.TestInfo.TestSwitch   # run a script function: return value, out parameters, log
 build/ut_script <UT99_DIR> --states                # phase C meter: auto state of every class, missing natives ranked
 build/ut_script <UT99_DIR> --run Package.Class [TICKS]   # spawn, auto state, tick its state code
-build/ut_script <UT99_DIR> --map MAP[?Key=Value...] [SECONDS]   # play a map's script (options go to InitGame, e.g. ?mutator=Pkg.Class): errors and log ranked; UTVM_LOG=1 prints every log line
+build/ut_script <UT99_DIR> --map MAP[?Key=Value...] [SECONDS [--player]]   # play a map's script (options go to InitGame, e.g. ?mutator=Pkg.Class): errors and log ranked; UTVM_LOG=1 prints every log line; --player: a player plays a fixed 20 s, one line (moved, yaw kept while strafing, ammo, deaths, respawned)
 build/ut_script <UT99_DIR> --maps [SECONDS]         # every map: "0 failed", no errors, pawns travelled; inside solid (listed with the map): BioAmmo / UT_invisibility (map data), at most a few small dropped items or a lift rider
 build/ut_mapview <UT99_DIR> MAP [--shot out/x.png] [--at x y z yaw pitch] [--lightmap out/lm.png]   # drag to look, arrows, WASD fly
 build/ut_mapview <UT99_DIR> MAP --play [--time S --follow --shot out/x.png]   # the match running; F follows a bot
+build/ut_mapview <UT99_DIR> MAP --player [--mouse-free] [--time S --shot out/x.png]   # play the match (WASD, mouse, buttons fire, Space, Ctrl, 1-0); with --shot the scripted run's view
+mkdir -p build && doxygen docs/Doxyfile          # docs site into build/site/html (theme: clone doxygen-awesome-css v2.5.0 into docs/site/awesome, see .github/workflows/pages.yml)
 python3 tools/check_docs.py                    # doc checks
 python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry|ledge|wall|reach [--angles A,B] [--ours build/ut_script]   # the original (and ours): steps / slopes a walking pawn gets over, air control, sliding, walking into steep slopes, jumping ledges, sidestepping walls, pointReachable limits (setup: DEVELOPMENT_GUIDE)
 python3 tools/upkg.py FILE [--names|--imports|--exports]

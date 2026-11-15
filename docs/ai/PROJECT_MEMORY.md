@@ -2,6 +2,16 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-15 — new identity, docs site
+
+- New banner in a deep-space identity: Orbitron / Rajdhani (SIL OFL, woff2 subsets embedded in the SVG), night navy, steel, ember accent. Badges recoloured in all six READMEs, identity in PROJECT_CONTEXT.
+- GitHub Pages site as in OpenBF1942-Plus: Doxygen 1.16.1 + doxygen-awesome-css v2.5.0 (`docs/Doxyfile`, `docs/site/theme.css`, `.github/workflows/pages.yml`); not built locally yet.
+
+## 2026-11-15 — a human player plays the match
+
+- `ut_mapview --player` joins through `Level.Game.Login`, then `Possess` (it starts the walk: without it the pawn stays in no state) and `PostLogin`. Keys and mouse fill the pawn's input variables at the retail binding speeds; the retail `PlayerInput` / `PlayerTick` script moves it; camera from `PlayerCalcView`. The original's `Viewport` is C++ only, so the pawn gets a bare `Engine.Player`. Mouse axes go in as a rate (`UpdateRotation` multiplies by `DeltaTime`), scale by feel.
+- `ut_script --map MAP 20 --player`: walks, keeps its yaw while strafing, fires (30 → 24), dies, respawns, 0 script errors on DM-Deck16][, DM-Morpheus, DM-Agony and CTF-Face. Added `MoveSmooth` (as `Move`) and `UpdateURL` (dropped). Not yet: HUD, first-person weapon, `User.ini` bindings and config values.
+
 ## 2026-11-15 — no more bots hovering on edges
 
 - A per-tick count of walking / falling flips per pawn over `--maps 60` finds 2 isolated seconds with 7 flips each in 83 maps, none repeating. DM-Tempest's edge-hovering bot (in debt.md since the ramp work) is gone, most likely fixed by the steep-face and ledge physics. Removed from the debt.

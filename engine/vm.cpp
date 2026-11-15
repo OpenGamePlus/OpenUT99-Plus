@@ -652,7 +652,9 @@ size_t find_label(const Function& code, const std::string& label) {
 
 }  // namespace
 
-bool Vm::event(Obj* o, const std::string& name, std::vector<Value> args, Value* ret) {
+bool Vm::event(Obj* o, const std::string& name, std::vector<Value>&& args, Value* ret) { return event(o, name, args, ret); }
+
+bool Vm::event(Obj* o, const std::string& name, std::vector<Value>& args, Value* ret) {
     // shortcut: Disable applies to every event name, not only probe functions; state probe masks not applied
     if (std::find(o->disabled.begin(), o->disabled.end(), lower(name)) != o->disabled.end()) return false;
     const Function* f = find_virtual(o->cls, o->state, name);

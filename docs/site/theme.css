@@ -1,0 +1,28 @@
+/* Project identity (docs/ai/PROJECT_CONTEXT.md) on top of doxygen-awesome-css. */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@800&family=Rajdhani:wght@500;600&display=swap');
+
+html {
+    --primary-color: #e2502a;
+    --primary-dark-color: #a8321c;
+    --primary-light-color: #ff9b5a;
+    --page-background-color: #f4f6fb;
+    --page-foreground-color: #0d1224;
+    --page-secondary-foreground-color: #4a5266;
+    --separator-color: #c3c9d6;
+    --side-nav-background: #090b16;
+    --side-nav-foreground: #dfe6ff;
+    --side-nav-arrow-color: #ff9b5a;
+    --code-background: #e6eaf3;
+    --fragment-background: #0d1224;
+    --fragment-foreground: #dfe6ff;
+    --font-family-title: Orbitron, 'Arial Black', sans-serif;
+}
+
+#projectname { font-family: var(--font-family-title); letter-spacing: 2px; color: #f4f6fb; }
+#projectbrief { font-family: Rajdhani, 'Arial Narrow', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #b8bfcf; }
+#titlearea { background: linear-gradient(90deg, #05060b, #090b16 55%, #0d1224); border-bottom: 3px solid #e2502a; }
+.title, h1, h2, h3 { font-family: Rajdhani, 'Arial Narrow', sans-serif; font-weight: 600; letter-spacing: .5px; }
+.headertitle .title { font-family: var(--font-family-title); font-weight: 800; }
+#nav-tree .selected { background: #e2502a; }
+#nav-tree .selected a, #nav-tree .selected .arrow { color: #f4f6fb; }
+#nav-tree a, #nav-tree .label { color: var(--side-nav-foreground); }

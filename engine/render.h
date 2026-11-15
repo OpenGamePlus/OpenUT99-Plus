@@ -18,6 +18,7 @@ public:
     explicit Renderer(const Scene& scene);  // uploads all batches
     ~Renderer();
     void draw(const Camera& cam, int w, int h, const std::vector<LiveBatch>& live = {});  // live: uploaded each call
+    void crosshair(int w, int h);  // a small white cross in the middle, over the last draw
     void save_png(const std::string& path, int w, int h) const;
 
 private:

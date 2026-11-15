@@ -4,6 +4,8 @@
 
 Clean-room reimplementation of the Unreal Engine 1 runtime as used by Unreal Tournament (1999). Part of the "-Plus" family (OpenBF1942-Plus, OpenCoD2-Plus, OpenMOHAA-Plus): keep an old game playable and moddable on modern hardware.
 
+Visual identity (README, docs, anything we draw ourselves — not the in-game HUD, which follows the original): [banner](../banner.svg); titles in Orbitron ExtraBold, text in Rajdhani SemiBold (both SIL OFL, embedded subset in the banner); colours deep space — night `#05060b` / `#0d1224`, steel `#c3c9d6` / `#f4f6fb`, accent ember `#e2502a` / `#ff9b5a`, atmosphere blue `#6fb6ff`, text `#b8bfcf`.
+
 ## Goals
 
 - Run retail UT content (maps, packages, mods) on a new engine.

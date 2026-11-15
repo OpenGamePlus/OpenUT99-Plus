@@ -127,6 +127,10 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
     vm.add_native("Move", [this](Obj* self, std::vector<Value*>& a, Value& r) {
         r.i = !move(self, {a[0]->v[0], a[0]->v[1], a[0]->v[2]}).hit;  // shortcut: no step-up or sliding in Move
     });
+    // shortcut: MoveSmooth moves as Move (no sliding along walls, no step-up); upgrade when a probe measures it.
+    vm.add_native("MoveSmooth", [this](Obj* self, std::vector<Value*>& a, Value& r) {
+        r.i = !move(self, {a[0]->v[0], a[0]->v[1], a[0]->v[2]}).hit;
+    });
     vm.add_native("SetCollisionSize", [&vm](Obj* self, std::vector<Value*>& a, Value& r) {
         if (Value* p = vm.prop(self, "CollisionRadius")) p->f = a[0]->f;  // shortcut: no encroachment test
         if (Value* p = vm.prop(self, "CollisionHeight")) p->f = a[1]->f;
@@ -168,6 +172,9 @@ World::World(Vm& vm, PackageSet& packages) : vm_(vm), packages_(packages) {
     // Never write into the install (rule: <UT99_DIR> is read-only for us); config writes are dropped.
     vm.add_native("SaveConfig", [](Obj*, std::vector<Value*>&, Value&) {});
     vm.add_native("ConsoleCommand", [](Obj*, std::vector<Value*>&, Value&) {});  // shortcut: no console yet, returns ""
+    // shortcut: UpdateURL (PlayerPawn: an option into the travel URL, and the ini if asked) is dropped: no travel yet,
+    // and we never write into the install; upgrade with map changes.
+    vm.add_native("UpdateURL", [](Obj*, std::vector<Value*>&, Value&) {});
     // ParseKillMessage(Killer, Victim, Weapon, DeathMessage): %k, %o, %w filled in (the UT message convention).
     vm.add_native("ParseKillMessage", [](Obj*, std::vector<Value*>& a, Value& r) {
         std::string out;
@@ -286,6 +293,15 @@ void World::guarded(Obj* o, const std::string& event, std::vector<Value> args) {
     }
 }
 
+Obj* World::find_class(const std::string& name) {
+    size_t dot = name.find('.');
+    const Package* p = dot == std::string::npos ? nullptr : packages_.get(name.substr(0, dot));
+    for (size_t i = 0; p && i < p->exports.size(); i++)
+        if (p->exports[i].class_ref == 0 && p->exports[i].size && iequal(p->exports[i].name, name.substr(dot + 1)))
+            return vm_.object(*p, int32_t(i + 1));
+    return nullptr;
+}
+
 void World::load(const std::string& map, const std::string& default_game) {
     const Package* p = packages_.get(map);
     if (!p) throw std::runtime_error("map not found: " + map);
@@ -340,12 +356,7 @@ void World::load(const std::string& map, const std::string& default_game) {
     }
     Obj* cls = nullptr;
     if (const Value* t = vm_.prop(level_info, "DefaultGameType")) cls = t->o;
-    size_t dot = default_game.find('.');
-    if (!cls && dot != std::string::npos)
-        if (const Package* gp = packages_.get(default_game.substr(0, dot)))
-            for (size_t i = 0; i < gp->exports.size() && !cls; i++)
-                if (gp->exports[i].class_ref == 0 && gp->exports[i].size && gp->exports[i].name == default_game.substr(dot + 1))
-                    cls = vm_.object(*gp, int32_t(i + 1));
+    if (!cls) cls = find_class(default_game);
     if (cls) {
         game = spawn(cls, nullptr, nullptr, nullptr, nullptr, nullptr);  // not begun: no events yet
         if (Value* v = vm_.prop(level_info, "Game")) v->o = game;
@@ -745,6 +756,8 @@ void World::tick(float dt) {
     delta.f = dt;
     for (size_t i = 0; i < actors.size(); i++) {  // index loop: spawning appends
         Obj* o = actors[i];
+        if (deleted_.count(o)) continue;
+        if (o == player) player_tick(dt);
         if (deleted_.count(o)) continue;
         guarded(o, "Tick", {delta});
         Value* rate = vm_.prop(o, "TimerRate");

@@ -2,11 +2,12 @@
 
 <p align="center"><img src="docs/banner.svg" alt="OpenUT99-Plus" width="100%"></p>
 
-![Status: research](https://img.shields.io/badge/status-research-orange)
-![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
-![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
-![C++17 | OpenGL 3.3](https://img.shields.io/badge/C%2B%2B17-OpenGL%203.3-lightgrey)
-![Unreal Tournament](https://img.shields.io/badge/Unreal-Tournament-6a4fb0)
+![Status: research](https://img.shields.io/badge/status-research-ff9b5a)
+![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1c2a44)
+![Platform: Linux](https://img.shields.io/badge/platform-Linux-7d8494)
+![C++17 | OpenGL 3.3](https://img.shields.io/badge/C%2B%2B17-OpenGL%203.3-7d8494)
+![Unreal Tournament](https://img.shields.io/badge/Unreal-Tournament-e2502a)
+[![Docs](https://img.shields.io/badge/docs-online-6fb6ff)](https://opengameplus.github.io/OpenUT99-Plus/)
 
 [Español](README.es.md) · **English** · [Português](README.pt.md) · [Français](README.fr.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
 
@@ -31,7 +32,7 @@
 - **Physics measured against the original**: our own probe scripts run on the original dedicated server and record exactly how pawns move ([ADR 0008](docs/architecture/adr/0008-probe-the-original.md)). Steps, walkable ramps, sliding on steep slopes, the wall limit and jumping onto ledges match it; how a slide starts does not yet.
 
 > [!NOTE]
-> **Research stage.** There is no player control yet: you can fly around any map or watch the bots play. There are no sound, HUD, menus or network yet, and much of the physics and AI is still placeholder ([known debt](docs/roadmap/debt.md)).
+> **Research stage.** You can play a Deathmatch against the bots, fly around any map or watch the bots play. There are no sound, HUD, weapon in hand, menus or network yet, and much of the physics and AI is still placeholder ([known debt](docs/roadmap/debt.md)).
 
 > [!IMPORTANT]
 > **No game content is included — bring your own data.** This repository is source code only: no packages, maps, textures, sounds, music or executables. The engine reads them from a copy of Unreal Tournament that **you legally own**, referred to here as `<UT99_DIR>`. It was tested with the Steam release and the [OldUnreal](https://www.oldunreal.com/) 469f patch.
@@ -43,6 +44,7 @@ There are no ready-to-run builds yet. Build the engine (see [Building](#building
 ```sh
 build/ut_mapview "<UT99_DIR>" DM-Deck16][                    # fly through a map
 build/ut_mapview "<UT99_DIR>" DM-Morpheus --play --follow    # watch the bots play, following one
+build/ut_mapview "<UT99_DIR>" DM-Deck16][ --player --mouse-free   # play a Deathmatch against the bots
 build/ut_script "<UT99_DIR>" --map DM-Codex 60               # headless: one minute of a match, printed
 ```
 
@@ -50,6 +52,7 @@ build/ut_script "<UT99_DIR>" --map DM-Codex 60               # headless: one min
 |---|---|
 | Look | hold a mouse button and drag, or the arrow keys |
 | Fly | WASD, shift goes faster |
+| Playing (`--player`) | WASD move, the mouse looks, left / right button fire / alt fire, Space jumps, Ctrl ducks, 1-0 weapons |
 | Watching a match | F follows the next bot; Esc quits |
 
 ## Roadmap
