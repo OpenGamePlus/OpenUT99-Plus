@@ -1,6 +1,6 @@
 """Measure the original engine with our probe (ADR 0008).
 
-    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry|ledge [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
+    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry|ledge|wall [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
 
 MAPGEN_DIR is a ut99-mapgen checkout set up as in DEVELOPMENT_GUIDE: ut/ holds a copy of the install with the
 OldUnreal Linux patch that matches it (the server we measure); make-469e/ holds a System with the v469e Linux patch,
@@ -21,7 +21,10 @@ its steady acceleration along the slope while it slides down, against 950 sin(an
 the speed along the slope on the first ticks after the switch to falling and how high each gets (--angles: lanes
 at those angles, all at 400).
 "ledge": like steps, but too high to step, with bCanJump and the MoveTo goal on top of the ledge; reports whether
-the pawn jumped, how high it got and where it ended up (on top or not).
+the pawn jumped, how high it got and where it ended up (on top or not). Lanes are (ledge height, JumpZ).
+"wall": a wall 200 high and 32 thick across each lane (lanes are its width and the offset of its centre), the goal
+straight behind it; reports what
+PickWallAdjust (called from HitWall) returns, the Destination it leaves, and whether the pawn got past the wall.
 """
 import math
 import os
@@ -42,9 +45,13 @@ GRAVITY = 950
 ENTRY_LANES = [(46, 100), (46, 200), (46, 300), (46, 400), (46, 600), (55, 400), (65, 400), (80, 400)]
 ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
-LEDGE_HEIGHTS = [32, 48, 64, 76, 77, 78, 80]
+LEDGE_LANES = [(77, 325), (78, 325), (77, 325, (17, 50)), (78, 325, (17, 50)), (98, 325, (17, 50)),
+               (100, 325, (17, 50))]  # (height, JumpZ[, (radius, collision height)])
+WALL_LANES = [(40, 0), (46, 0), (48, 0), (46, -20), (46, 20), (66, 0, (25, 39)), (70, 0, (25, 39)), (40, 0, None, 40),
+              (200, 0, None, 40)]
+# (width, centre offset in y[, (radius, collision height) or None[, height (200)]])
 FLOOR = 0
-MAPS = {"ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
+MAPS = {"wall": "OU-Wall", "ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
 
 
@@ -97,11 +104,22 @@ def wedge(x0, x1, y0, y1, z0, z1, texture, name):
     return Brush(polys=polys, name=name, csg="CSG_Add")
 
 
+def size_label(lane):
+    label = f" r{lane[2][0]}h{lane[2][1]}" if len(lane) > 2 and lane[2] else ""
+    return label + (f" {lane[3]} high" if len(lane) > 3 else "")
+
+
+def size_tag(lane):
+    return f"C{lane[2][0]}_{lane[2][1]}" if len(lane) > 2 and lane[2] else ""
+
+
 def rises(kind):
     if kind == "steps":
         return [(f"{h}", h) for h in STEP_HEIGHTS]
     if kind == "ledge":
-        return [(f"{h}", h) for h in LEDGE_HEIGHTS]
+        return [(f"{l[0]} j{l[1]}{size_label(l)}", l[0]) for l in LEDGE_LANES]
+    if kind == "wall":
+        return [(f"{l[0]}@{l[1]:+g}{size_label(l)}", l[0]) for l in WALL_LANES]
     if kind == "air":
         return [(f"air {c:g}", c) for c in AIR_CONTROLS]
     if kind == "slide":
@@ -171,6 +189,23 @@ def ledge_report(tracks, walk_from=0.5):
     return out
 
 
+ADJ_RE = re.compile(r"(?m)^ScriptLog: PROBEADJ (\S+) (\S+) (\S+) (\S+) (\S+) (\S+)")
+
+
+def wall_report(text):
+    """{lane: (first PickWallAdjust result, Destination it left, x of that call, farthest x reached, physics after)}."""
+    tracks = parse_log(text)
+    out = {}
+    for m in ADJ_RE.finditer(text):
+        name = m.group(1)
+        if name in out or name not in tracks:
+            continue
+        dest = tuple(float(v) for v in m.group(6).split(","))
+        at = min(tracks[name], key=lambda s: abs(s[0] - float(m.group(2))))
+        out[name] = (m.group(3) == "True", dest, at[1], max(s[1] for s in tracks[name]), int(m.group(4)))
+    return {lane_of(tracks[n][0][2]): v for n, v in out.items()}
+
+
 def build_lanes(mapgen, kind):
     sys.path.insert(0, os.path.join(mapgen, "tools"))
     from build import Map
@@ -199,10 +234,17 @@ def build_lanes(mapgen, kind):
             m.actor("PathNode", 256 + 0.75 * run, y, FLOOR + 0.75 * SLIDE_RISE + 39 + 17 * math.tan(math.radians(rise))
                     + 40, Tag="Drop")
             continue
+        if kind == "wall":
+            c = WALL_LANES[i][1]
+            tall = WALL_LANES[i][3] if len(WALL_LANES[i]) > 3 else 200
+            m.add(box(256, y + c - rise / 2, FLOOR, 288, y + c + rise / 2, FLOOR + tall, texture="UTtech1.bmTrim",
+                      csg="CSG_Add", name=f"Lane{i}"))
+            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up1{size_tag(WALL_LANES[i])}")
+            continue
         if kind == "ledge":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
                       name=f"Lane{i}"))
-            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up{rise}")
+            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up{rise}J{LEDGE_LANES[i][1]}{size_tag(LEDGE_LANES[i])}")
             continue
         if kind == "steps":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
@@ -277,6 +319,17 @@ def main(argv):
     tracks = parse_log(run_server(game, MAPS[kind], seconds, log_path))
     if not tracks:
         raise SystemExit(f"no probe lines in {log_path}")
+    lanes = rises(kind)
+    if kind == "wall":
+        rows = {"original": wall_report(open(log_path, encoding="latin-1").read())}
+        if "--ours" in argv:
+            rows["ours"] = wall_report(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind], seconds))
+        for who, rep in rows.items():
+            print(f"{who}:  lane            adjusted  destination left            at x   farthest x  physics")
+            for lane, (ok, dest, x, far, phys) in sorted(rep.items()):
+                d = ", ".join(f"{v:.0f}" for v in dest)
+                print(f"      {lanes[lane][0]:>16}  {'yes' if ok else 'no':>8}  ({d:>22})  {x:6.0f}  {far:9.0f}  {phys:7}")
+        return
     ours = None
     report = {"ledge": ledge_report, "air": air_report, "slide": slide_report, "entry": entry_report}.get(kind, step_report)
     if "--ours" in argv:
@@ -296,7 +349,7 @@ def main(argv):
         fmt = lambda h, e: f"{'yes' if e[1] else 'no':>6}  {e[2]:5.1f}  {'yes' if e[3] and e[3] - e[0] > h - 2 else 'no':>6}"
         for lane, e in sorted(report(tracks).items()):
             label, h = lanes[lane] if 0 <= lane < len(lanes) else ("?", 0)
-            row = f"{label:>5}  {fmt(h, e):>30}"
+            row = f"{label:>16}  {fmt(h, e):>30}"
             if ours is not None:
                 row += f"   {fmt(h, ours[lane]):>30}" if lane in ours else "   (no track)"
             print(row)

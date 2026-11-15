@@ -398,10 +398,10 @@ void World::register_ai() {
     vm.add_native("StopWaiting", [](Obj* self, std::vector<Value*>&, Value&) {  // ends a latent Sleep
         if (self && self->sleep > 0) self->sleep = 0;
     });
-    // PickWallAdjust: measured (probe OU-Ledge) for a walking pawn blocked by a ledge (JumpZ 325): up to 77 high
-    // (72.2 above its feet) True, falling, Velocity GroundSpeed toward Destination and JumpZ up; 78 and up False, and
-    // False while falling. shortcut: the test is ours (the box raised by the apex + 17 fits a radius further on; the
-    // 17 is fitted at JumpZ 325 only), no sideways adjust.
+    // PickWallAdjust: measured (probe OU-Ledge) for a walking pawn blocked by a ledge: up to 77 high True, falling, with
+    // Velocity GroundSpeed toward Destination and JumpZ up; 78 and up False; False while falling. The limit is the same
+    // for JumpZ 250, 325 and 400 (at 250 it jumps ledges it cannot clear) and for CollisionHeight 39 and 50: we test the
+    // box raised to 77.5 above the floor. Then a sideways adjust (below).
     vm.add_native("PickWallAdjust", [this](Obj* self, std::vector<Value*>&, Value& r) {
         Value* mode = vm_.prop(self, "Physics");
         const Value* can = vm_.prop(self, "bCanJump");
@@ -409,21 +409,40 @@ void World::register_ai() {
         const Value* gs = vm_.prop(self, "GroundSpeed");
         const Value* rv = vm_.prop(self, "CollisionRadius");
         const Value* hv = vm_.prop(self, "CollisionHeight");
-        if (!mode || mode->i != 1 || !can || !can->i || !jz || jz->f <= 0 || !rv || !hv) return;
-        Vec3 at = vec_of(vm_.prop(self, "Location")), to = vec_of(vm_.prop(self, "Destination"));
+        if (!mode || mode->i != 1 || !rv || !hv) return;
+        Vec3 at = vec_of(vm_.prop(self, "Location"));
+        Value* dest = vm_.prop(self, "Destination");
+        Vec3 to = vec_of(dest);
         float dx = to.x - at.x, dy = to.y - at.y, len = std::sqrt(dx * dx + dy * dy);
         if (len < 1) return;
         dx /= len, dy /= len;
-        float apex = jz->f * jz->f / (2 * 950) + 17, reach = rv->f * 2;
-        Vec3 ext{rv->f, rv->f, hv->f}, up{at.x, at.y, at.z + apex};
-        if (trace_world(self, at, up, ext).hit || trace_world(self, up, {up.x + dx * reach, up.y + dy * reach, up.z}, ext).hit)
+        float reach = rv->f * 2;
+        Vec3 ext{rv->f, rv->f, hv->f};
+        auto clear = [&](Vec3 from, Vec3 side) {  // the box moves there, then a reach toward Destination
+            Vec3 p{from.x + side.x, from.y + side.y, from.z + side.z};
+            return !trace_world(self, from, p, ext).hit && !trace_world(self, p, {p.x + dx * reach, p.y + dy * reach, p.z}, ext).hit;
+        };
+        if (can && can->i && jz && jz->f > 0 && clear(at, {0, 0, 72.7f})) {  // from the hover: box bottom 77.5 above the floor
+            float speed = gs ? gs->f : 400;
+            Value* v = vm_.prop(self, "Velocity");
+            v->v[0] = dx * speed, v->v[1] = dy * speed, v->v[2] = jz->f;
+            mode->i = 2;
+            set_base(self, nullptr);
+            r.i = 1;
             return;
-        float speed = gs ? gs->f : 400;
-        Value* v = vm_.prop(self, "Velocity");
-        v->v[0] = dx * speed, v->v[1] = dy * speed, v->v[2] = jz->f;
-        mode->i = 2;
-        set_base(self, nullptr);
-        r.i = 1;
+        }
+        // Sideways (probe OU-Wall, walls centred or off to one side): left of the way to Destination first, then right.
+        // Destination becomes 2 * radius + 16 to that side (50 at radius 17, 66 at 25) and 25 up. It fits if the box
+        // clears a distance found between 40 and 41 at radius 17 (walls 46 wide passed, 48 not) and between 58 and 60 at
+        // radius 25 (66 passed, 70 not). shortcut: that distance is a line fitted through both, 2.25 * radius + 1.75.
+        float check = 2.25f * rv->f + 1.75f, aside = 2 * rv->f + 16;
+        for (float side : {1.f, -1.f}) {
+            Vec3 l{dy * side, -dx * side, 0};  // facing +x, left is -y
+            if (!clear(at, {l.x * check, l.y * check, 0})) continue;
+            dest->v[0] = at.x + l.x * aside, dest->v[1] = at.y + l.y * aside, dest->v[2] = at.z + 25;
+            r.i = 1;
+            return;
+        }
     });
     vm.add_native("EAdjustJump", [this](Obj* self, std::vector<Value*>&, Value& r) {  // shortcut: straight up jump
         const Value* v = vm_.prop(self, "Velocity");
