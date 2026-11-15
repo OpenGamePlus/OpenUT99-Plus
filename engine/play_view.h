@@ -20,6 +20,7 @@ public:
     size_t drawn = 0;  // actors in the last build
 
 private:
+    bool behind_view();  // the player looks at itself (PlayerPawn.bBehindView)
     const LodMesh* mesh(const Obj* m);
     const Image* image(const Package* p, const Export* e, bool masked);  // nullptr export: the checker
     void add_mesh(Obj* actor, const LodMesh& m, const Obj* mesh_obj);

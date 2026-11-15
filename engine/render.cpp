@@ -226,6 +226,16 @@ void Renderer::Impl::pass(const Camera& cam, int w, int h, bool backdrop_depth_o
     glDisable(GL_BLEND);
 }
 
+void Renderer::crosshair(int w, int h) {
+    glEnable(GL_SCISSOR_TEST);
+    glClearColor(1, 1, 1, 1);
+    glScissor(w / 2 - 8, h / 2 - 1, 16, 2);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glScissor(w / 2 - 1, h / 2 - 8, 2, 16);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+}
+
 void Renderer::save_png(const std::string& path, int w, int h) const {
     std::vector<uint8_t> px(size_t(w) * size_t(h) * 4), flipped(px.size());
     glPixelStorei(GL_PACK_ALIGNMENT, 1);

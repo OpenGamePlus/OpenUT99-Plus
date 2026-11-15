@@ -69,11 +69,16 @@ size_t PlayView::batch(const Image* img, uint32_t flags) {
     return it->second;
 }
 
+bool PlayView::behind_view() {
+    const Value* b = vm_.prop(world_.player, "bBehindView");
+    return b && b->i;
+}
+
 const std::vector<LiveBatch>& PlayView::build() {
     out_.clear(), slots_.clear();
     drawn = 0;
     for (Obj* a : world_.actors) {
-        if (world_.destroyed(a)) continue;
+        if (world_.destroyed(a) || (a == world_.player && !behind_view())) continue;  // first person: not our own body
         const Value* type = vm_.prop(a, "DrawType");
         const Value* hidden = vm_.prop(a, "bHidden");
         if (!type || (hidden && hidden->i)) continue;
