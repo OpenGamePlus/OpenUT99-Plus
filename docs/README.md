@@ -1,5 +1,9 @@
 # Documentation index
 
+![OpenUT99-Plus](banner.svg)
+
+Clean-room reimplementation of Unreal Engine 1 that runs Unreal Tournament (1999) from your own installation. Start with the [system summary](ai/SYSTEM_SUMMARY.md) for what works today; the pages below hold the format specs, decisions and plans. The engine and tool reference is generated from `engine/` and `tools/`.
+
 | Area | Document |
 |---|---|
 | Retail install layout | [formats/install.md](formats/install.md), [formats/ini.md](formats/ini.md) (config, package lookup) |
@@ -10,4 +14,5 @@
 | Roadmap (order, exit checks) | [roadmap/roadmap.md](roadmap/roadmap.md) |
 | Debt, risks, open questions | [roadmap/debt.md](roadmap/debt.md) |
 | Terms | [glossary.md](glossary.md) |
+| Docs site | GitHub Pages from `docs/Doxyfile`, built by `.github/workflows/pages.yml` on every push to main |
 | AI memory layer | [ai/README_AI.md](ai/README_AI.md) |

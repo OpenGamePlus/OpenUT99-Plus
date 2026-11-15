@@ -2,11 +2,12 @@
 
 <p align="center"><img src="docs/banner.svg" alt="OpenUT99-Plus" width="100%"></p>
 
-![Status: research](https://img.shields.io/badge/status-research-orange)
-![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
-![Platform: Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
-![C++17 | OpenGL 3.3](https://img.shields.io/badge/C%2B%2B17-OpenGL%203.3-lightgrey)
-![Unreal Tournament](https://img.shields.io/badge/Unreal-Tournament-6a4fb0)
+![Status: research](https://img.shields.io/badge/status-research-ff9b5a)
+![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-1c2a44)
+![Platform: Linux](https://img.shields.io/badge/platform-Linux-7d8494)
+![C++17 | OpenGL 3.3](https://img.shields.io/badge/C%2B%2B17-OpenGL%203.3-7d8494)
+![Unreal Tournament](https://img.shields.io/badge/Unreal-Tournament-e2502a)
+[![Docs](https://img.shields.io/badge/docs-online-6fb6ff)](https://opengameplus.github.io/OpenUT99-Plus/)
 
 [Español](README.es.md) · [English](README.md) · [Português](README.pt.md) · **Français** · [Deutsch](README.de.md) · [Русский](README.ru.md)
 
@@ -31,7 +32,7 @@
 - **Une physique mesurée sur l'original** : nos propres scripts sondes tournent sur le serveur dédié original et enregistrent exactement comment les pawns se déplacent ([ADR 0008](docs/architecture/adr/0008-probe-the-original.md)). Les marches, les rampes praticables, la glissade sur les pentes raides, la limite des murs et le saut sur les rebords correspondent à l'original ; le début d'une glissade pas encore.
 
 > [!NOTE]
-> **Phase de recherche.** Il n'y a pas encore de contrôle du joueur : on peut survoler n'importe quelle carte ou regarder les bots jouer. Pas encore de son, de HUD, de menus ni de réseau, et une bonne part de la physique et de l'IA reste provisoire ([dette connue](docs/roadmap/debt.md)).
+> **Phase de recherche.** On peut jouer un Deathmatch contre les bots, survoler n'importe quelle carte ou regarder les bots jouer. Pas encore de son, de HUD, d'arme en main, de menus ni de réseau, et une bonne part de la physique et de l'IA reste provisoire ([dette connue](docs/roadmap/debt.md)).
 
 > [!IMPORTANT]
 > **Aucun contenu du jeu n'est inclus : apportez vos propres données.** Ce dépôt ne contient que du code source : ni paquets, ni cartes, ni textures, ni sons, ni musiques, ni exécutables. Le moteur les lit depuis une copie d'Unreal Tournament que **vous possédez légalement**, appelée ici `<UT99_DIR>`. Testé avec la version Steam et le patch 469f d'[OldUnreal](https://www.oldunreal.com/).
@@ -43,6 +44,7 @@ Il n'y a pas encore de version prête à l'emploi. Compilez le moteur (voir [Com
 ```sh
 build/ut_mapview "<UT99_DIR>" DM-Deck16][                    # survoler une carte
 build/ut_mapview "<UT99_DIR>" DM-Morpheus --play --follow    # regarder les bots jouer, en suivant l'un d'eux
+build/ut_mapview "<UT99_DIR>" DM-Deck16][ --player --mouse-free   # jouer un Deathmatch contre les bots
 build/ut_script "<UT99_DIR>" --map DM-Codex 60               # sans fenêtre : une minute de partie, imprimée
 ```
 
@@ -50,6 +52,7 @@ build/ut_script "<UT99_DIR>" --map DM-Codex 60               # sans fenêtre : u
 |---|---|
 | Regarder | maintenir un bouton de la souris et glisser, ou les flèches |
 | Voler | WASD, shift va plus vite |
+| En jeu (`--player`) | WASD déplace, la souris regarde, bouton gauche / droit tir / tir secondaire, Espace saute, Ctrl s'accroupit, 1-0 armes |
 | Pendant une partie | F suit le bot suivant ; Échap quitte |
 
 ## Feuille de route
