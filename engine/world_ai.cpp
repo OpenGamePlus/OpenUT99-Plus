@@ -398,10 +398,10 @@ void World::register_ai() {
     vm.add_native("StopWaiting", [](Obj* self, std::vector<Value*>&, Value&) {  // ends a latent Sleep
         if (self && self->sleep > 0) self->sleep = 0;
     });
-    // PickWallAdjust: measured (probe OU-Ledge) for a walking pawn blocked by a ledge (JumpZ 325): up to 77 high
-    // (72.2 above its feet) True, falling, Velocity GroundSpeed toward Destination and JumpZ up; 78 and up False, and
-    // False while falling. shortcut: the test is ours (the box raised by the apex + 17 fits a radius further on; the
-    // 17 is fitted at JumpZ 325 only), no sideways adjust.
+    // PickWallAdjust: measured (probe OU-Ledge) for a walking pawn blocked by a ledge: up to 77 high True, falling, with
+    // Velocity GroundSpeed toward Destination and JumpZ up; 78 and up False; False while falling. The limit is the same
+    // for JumpZ 250, 325 and 400 (at 250 it jumps ledges it cannot clear). shortcut: we test the box raised to 77.5 above
+    // the floor, read as 2 * CollisionHeight (39) - 0.5 (unverified for other heights); no sideways adjust.
     vm.add_native("PickWallAdjust", [this](Obj* self, std::vector<Value*>&, Value& r) {
         Value* mode = vm_.prop(self, "Physics");
         const Value* can = vm_.prop(self, "bCanJump");
@@ -414,7 +414,7 @@ void World::register_ai() {
         float dx = to.x - at.x, dy = to.y - at.y, len = std::sqrt(dx * dx + dy * dy);
         if (len < 1) return;
         dx /= len, dy /= len;
-        float apex = jz->f * jz->f / (2 * 950) + 17, reach = rv->f * 2;
+        float apex = 2 * hv->f - 4.8f - 0.5f, reach = rv->f * 2;  // from the hover: the box bottom 77.5 above the floor
         Vec3 ext{rv->f, rv->f, hv->f}, up{at.x, at.y, at.z + apex};
         if (trace_world(self, at, up, ext).hit || trace_world(self, up, {up.x + dx * reach, up.y + dy * reach, up.z}, ext).hit)
             return;

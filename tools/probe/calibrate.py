@@ -21,7 +21,7 @@ its steady acceleration along the slope while it slides down, against 950 sin(an
 the speed along the slope on the first ticks after the switch to falling and how high each gets (--angles: lanes
 at those angles, all at 400).
 "ledge": like steps, but too high to step, with bCanJump and the MoveTo goal on top of the ledge; reports whether
-the pawn jumped, how high it got and where it ended up (on top or not).
+the pawn jumped, how high it got and where it ended up (on top or not). Lanes are (ledge height, JumpZ).
 """
 import math
 import os
@@ -42,7 +42,8 @@ GRAVITY = 950
 ENTRY_LANES = [(46, 100), (46, 200), (46, 300), (46, 400), (46, 600), (55, 400), (65, 400), (80, 400)]
 ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
-LEDGE_HEIGHTS = [32, 48, 64, 76, 77, 78, 80]
+LEDGE_LANES = [(32, 325), (77, 325), (78, 325), (64, 250), (72, 250), (77, 250), (78, 250),
+               (40, 400), (64, 400), (77, 400), (78, 400)]
 FLOOR = 0
 MAPS = {"ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
@@ -101,7 +102,7 @@ def rises(kind):
     if kind == "steps":
         return [(f"{h}", h) for h in STEP_HEIGHTS]
     if kind == "ledge":
-        return [(f"{h}", h) for h in LEDGE_HEIGHTS]
+        return [(f"{h} j{jz}", h) for h, jz in LEDGE_LANES]
     if kind == "air":
         return [(f"air {c:g}", c) for c in AIR_CONTROLS]
     if kind == "slide":
@@ -202,7 +203,7 @@ def build_lanes(mapgen, kind):
         if kind == "ledge":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
                       name=f"Lane{i}"))
-            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up{rise}")
+            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up{rise}J{LEDGE_LANES[i][1]}")
             continue
         if kind == "steps":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
@@ -296,7 +297,7 @@ def main(argv):
         fmt = lambda h, e: f"{'yes' if e[1] else 'no':>6}  {e[2]:5.1f}  {'yes' if e[3] and e[3] - e[0] > h - 2 else 'no':>6}"
         for lane, e in sorted(report(tracks).items()):
             label, h = lanes[lane] if 0 <= lane < len(lanes) else ("?", 0)
-            row = f"{label:>5}  {fmt(h, e):>30}"
+            row = f"{label:>9}  {fmt(h, e):>30}"
             if ours is not None:
                 row += f"   {fmt(h, ours[lane]):>30}" if lane in ours else "   (no track)"
             print(row)
