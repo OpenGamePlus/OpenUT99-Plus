@@ -2,10 +2,14 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-15 — no more bots hovering on edges
+
+- A per-tick count of walking / falling flips per pawn over `--maps 60` finds 2 isolated seconds with 7 flips each in 83 maps, none repeating. DM-Tempest's edge-hovering bot (in debt.md since the ramp work) is gone, most likely fixed by the steep-face and ledge physics. Removed from the debt.
+
 ## 2026-11-15 — routes pay SpecialCost: bots stop planning through jump spots
 
 - Lifts: the map's lift edges (flag 0x20, distance 500) were in our graph, but `JumpSpot` edges looked as cheap. Over the 26 DM maps with a `LiftCenter`, 1,534 routes went through jump spots that need a translocator. Routes now add the `SpecialCost(Seeker)` of nodes with `bSpecialCost` (`JumpSpot` answers 100,000,000 to a bot that cannot use it). Jump-spot routes 1,534 → 63, lifts moved 38 → 49, rides 28 → 31.
-- `--maps 60`: 8,541 units per bot (8,250), 128 deaths, no script error. Still: DM-Agony and DM-Peak routes never pass their lift; no route test (needs a script class with `SpecialCost`).
+- `--maps 60`: 8,541 units per bot (8,250), 128 deaths, no script error. DM-Agony and DM-Peak: their lifts start in `StandOpenTimed` and are in the graph, but no route needed them in 120 s (not a fault). No route test (needs a script class with `SpecialCost`).
 
 ## 2026-11-14 — pointReachable limits measured
 
