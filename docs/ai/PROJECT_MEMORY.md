@@ -5,7 +5,7 @@ Append-only. Newest first. At most 3 bullets per stage.
 ## 2026-11-14 — mesh skins: empty slots, environment maps, Style
 
 - Found while taking the README shots. CTF-Face's asteroids drew flat grey: `boulder1M` / `boulder2M` point their material at an empty slot, and they now take the mesh's first texture (unverified). `UDamage` uses `bMeshEnviroMap` with `Texture`, now drawn with a static environment map. Actor `Style` (masked / translucent / modulated) was ignored, so translucent effects drew black (DM-Liandri's teleporter); it now adds to the mesh flags. Fixed in both the static scene and the play view.
-- Open: AS-Frigate's black patches against the sky are BSP or sky-zone geometry, not meshes. Next: check the boulder rule against a picture of the original, then the Frigate patches.
+- Open: AS-Frigate's black patches against the sky are not meshes and not the sky pass; they look like unlit surfaces. Next: pictures of the original (CTF-Face's asteroids, AS-Frigate) to settle both.
 
 ## 2026-11-14 — README in the family format, with screenshots
 
