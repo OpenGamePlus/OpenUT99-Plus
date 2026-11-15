@@ -1,6 +1,6 @@
 """Measure the original engine with our probe (ADR 0008).
 
-    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry|ledge|wall [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
+    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry|ledge|wall|reach [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
 
 MAPGEN_DIR is a ut99-mapgen checkout set up as in DEVELOPMENT_GUIDE: ut/ holds a copy of the install with the
 OldUnreal Linux patch that matches it (the server we measure); make-469e/ holds a System with the v469e Linux patch,
@@ -22,6 +22,8 @@ the speed along the slope on the first ticks after the switch to falling and how
 at those angles, all at 400).
 "ledge": like steps, but too high to step, with bCanJump and the MoveTo goal on top of the ledge; reports whether
 the pawn jumped, how high it got and where it ended up (on top or not). Lanes are (ledge height, JumpZ).
+"reach": a ProbeReacher per lane asks pointReachable for a point 400 ahead: on top of a block of growing height
+("up"), or on the floor below the platform it stands on ("down"); reports the answer.
 "wall": a wall 200 high and 32 thick across each lane (lanes are its width and the offset of its centre), the goal
 straight behind it; reports what
 PickWallAdjust (called from HitWall) returns, the Destination it leaves, and whether the pawn got past the wall.
@@ -47,11 +49,14 @@ ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
 LEDGE_LANES = [(77, 325), (78, 325), (77, 325, (17, 50)), (78, 325, (17, 50)), (98, 325, (17, 50)),
                (100, 325, (17, 50))]  # (height, JumpZ[, (radius, collision height)])
+REACH_LANES = [("up", 29, 0), ("up", 30, 0), ("up", 52, 1), ("up", 53, 1), ("down", 24, 0), ("down", 25, 0),
+               ("down", 118, 1), ("down", 119, 1)]  # (up or down, height, bCanJump): the measured limits
+REACH_X = 400
 WALL_LANES = [(40, 0), (46, 0), (48, 0), (46, -20), (46, 20), (66, 0, (25, 39)), (70, 0, (25, 39)), (40, 0, None, 40),
               (200, 0, None, 40)]
 # (width, centre offset in y[, (radius, collision height) or None[, height (200)]])
 FLOOR = 0
-MAPS = {"wall": "OU-Wall", "ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
+MAPS = {"reach": "OU-Reach", "wall": "OU-Wall", "ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
 
 
@@ -118,6 +123,8 @@ def rises(kind):
         return [(f"{h}", h) for h in STEP_HEIGHTS]
     if kind == "ledge":
         return [(f"{l[0]} j{l[1]}{size_label(l)}", l[0]) for l in LEDGE_LANES]
+    if kind == "reach":
+        return [(f"{d} {h}{'' if j else ' nojump'}", h) for d, h, j in REACH_LANES]
     if kind == "wall":
         return [(f"{l[0]}@{l[1]:+g}{size_label(l)}", l[0]) for l in WALL_LANES]
     if kind == "air":
@@ -206,6 +213,14 @@ def wall_report(text):
     return {lane_of(tracks[n][0][2]): v for n, v in out.items()}
 
 
+REACH_RE = re.compile(r"(?m)^ScriptLog: PROBEREACH (\S+) \S+ (\S+) (\S+),(\S+),(\S+) ")
+
+
+def reach_report(text):
+    """{lane: pointReachable answer}, from the PROBEREACH lines."""
+    return {lane_of(float(m.group(4))): m.group(2) == "True" for m in REACH_RE.finditer(text)}
+
+
 def build_lanes(mapgen, kind):
     sys.path.insert(0, os.path.join(mapgen, "tools"))
     from build import Map
@@ -214,7 +229,7 @@ def build_lanes(mapgen, kind):
     m = Map(MAPS[kind])
     lanes = rises(kind)
     y_top = LANE_Y0 + LANE_GAP * len(lanes)
-    height = {"air": 2048, "slide": 1024, "entry": 1024}.get(kind, 512)
+    height = {"air": 2048, "slide": 1024, "entry": 1024, "reach": 1024}.get(kind, 512)
     m.add(box(-512, LANE_Y0 - 350, FLOOR, 2048, y_top + 100, FLOOR + height,
               floor="UTtech1.bmFloor", walls="UTtech1.bmwall3", ceiling="UTtech1.bmFloor"))
     for i, (_, rise) in enumerate(lanes):
@@ -233,6 +248,17 @@ def build_lanes(mapgen, kind):
             m.add(wedge(256, 256 + run, y - 100, y + 100, FLOOR, FLOOR + SLIDE_RISE, "UTtech1.bmTrim", f"Lane{i}"))
             m.actor("PathNode", 256 + 0.75 * run, y, FLOOR + 0.75 * SLIDE_RISE + 39 + 17 * math.tan(math.radians(rise))
                     + 40, Tag="Drop")
+            continue
+        if kind == "reach":
+            d, h, j = REACH_LANES[i]
+            if d == "up":
+                m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + h, texture="UTtech1.bmTrim", csg="CSG_Add",
+                          name=f"Lane{i}"))
+                m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Reach{REACH_X}_{h}_{j}")
+            else:  # the pawn on a platform h high ending at x = 200, the point on the floor beyond
+                m.add(box(-400, y - 100, FLOOR, 200, y + 100, FLOOR + h, texture="UTtech1.bmTrim", csg="CSG_Add",
+                          name=f"Lane{i}"))
+                m.actor("PathNode", 0, y, FLOOR + h + 60, Tag=f"Reach{REACH_X}_D{h}_{j}")
             continue
         if kind == "wall":
             c = WALL_LANES[i][1]
@@ -320,6 +346,18 @@ def main(argv):
     if not tracks:
         raise SystemExit(f"no probe lines in {log_path}")
     lanes = rises(kind)
+    if kind == "reach":
+        orig = reach_report(open(log_path, encoding="latin-1").read())
+        ours = None
+        if "--ours" in argv:
+            ours = reach_report(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind], seconds))
+        print("lane             original" + ("   ours" if ours is not None else ""))
+        for lane, ok in sorted(orig.items()):
+            row = f"{lanes[lane][0]:>14}   {'yes' if ok else 'no':>8}"
+            if ours is not None:
+                row += f"   {('yes' if ours[lane] else 'no') if lane in ours else '-':>4}"
+            print(row)
+        return
     if kind == "wall":
         rows = {"original": wall_report(open(log_path, encoding="latin-1").read())}
         if "--ours" in argv:

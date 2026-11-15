@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — pointReachable limits measured
+
+- `calibrate.py reach` (`OU-Reach`, `ProbeReacher`): the original's `pointReachable` reaches climbs up to 29 and drops up to 24 without `bCanJump`, and climbs up to 52 and drops up to 118 with it. Ours had a 120 climb and a 400 drop. Our straight-line test also clipped the edge on drops, so a drop now walks off at its own height first. Ours matches all eight lanes.
+- `--maps 60`: 8,250 units per bot (8,368), 135 deaths, bots still falling 33 (45), no script error. Not checked: whether bots turn `bCanJump` on in script, and how the limits scale with `JumpZ` or size.
+
 ## 2026-11-14 — PickWallAdjust with other pawn sizes
 
 - Probe tags take a collision size (`CRR_HH`). The ledge limit stays 77 with `CollisionHeight` 50, so it is a fixed height above the floor, not 2 × height; the engine now lifts the box a fixed 72.7 above the hover. The sidestep does follow the radius: the goal goes 2 × radius + 16 aside (50 at 17, 66 at 25). The clearance is 40–41 at 17 and 58–60 at 25, fitted as 2.25 × radius + 1.75. Ours matches all 7 wall and 6 ledge lanes.

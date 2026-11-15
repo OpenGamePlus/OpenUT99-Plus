@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "probe"))
-from calibrate import LANE_GAP, LANE_Y0, air_report, entry_report, ledge_report, parse_log, slide_report, step_report, wall_report  # noqa: E402
+from calibrate import LANE_GAP, LANE_Y0, air_report, entry_report, ledge_report, parse_log, reach_report, slide_report, step_report, wall_report  # noqa: E402
 
 LOG = """Log: Bringing Level OU-Steps.MyLevel up for play (20)...
 ScriptLog: PROBE ProbePawn0 0.25 0.00 -1050.00 45.00 2 0.00 0.00 -200.00
@@ -65,6 +65,12 @@ class ProbeLogTest(unittest.TestCase):
                 f"ScriptLog: PROBE P0 1.5 236 {y} 44 1 0 0 0\n"
                 f"ScriptLog: PROBEADJ ghost 1.0 True 1 0,0,0 0,0,0\n")  # no track: left out
         self.assertEqual(wall_report(text), {1: (True, (230.0, y - 50.0, 69.0), 230.0, 236.0, 1)})
+
+    def test_reach_report(self):
+        y = LANE_Y0 + 2 * LANE_GAP
+        text = (f"ScriptLog: PROBEREACH R0 0.5 True 0.0,{LANE_Y0},43.8 400.0,{LANE_Y0},72.8\n"
+                f"ScriptLog: PROBEREACH R1 0.5 False 0.0,{y},43.8 400.0,{y},73.8\n")
+        self.assertEqual(reach_report(text), {0: True, 2: False})
 
 
 if __name__ == "__main__":
