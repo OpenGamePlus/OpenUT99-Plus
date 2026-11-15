@@ -47,8 +47,9 @@ ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
 LEDGE_LANES = [(77, 325), (78, 325), (77, 325, (17, 50)), (78, 325, (17, 50)), (98, 325, (17, 50)),
                (100, 325, (17, 50))]  # (height, JumpZ[, (radius, collision height)])
-WALL_LANES = [(40, 0), (46, 0), (48, 0), (46, -20), (46, 20), (66, 0, (25, 39)), (70, 0, (25, 39))]
-# (width, centre offset in y[, (radius, collision height)])
+WALL_LANES = [(40, 0), (46, 0), (48, 0), (46, -20), (46, 20), (66, 0, (25, 39)), (70, 0, (25, 39)), (40, 0, None, 40),
+              (200, 0, None, 40)]
+# (width, centre offset in y[, (radius, collision height) or None[, height (200)]])
 FLOOR = 0
 MAPS = {"wall": "OU-Wall", "ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
@@ -104,11 +105,12 @@ def wedge(x0, x1, y0, y1, z0, z1, texture, name):
 
 
 def size_label(lane):
-    return f" r{lane[2][0]}h{lane[2][1]}" if len(lane) > 2 else ""
+    label = f" r{lane[2][0]}h{lane[2][1]}" if len(lane) > 2 and lane[2] else ""
+    return label + (f" {lane[3]} high" if len(lane) > 3 else "")
 
 
 def size_tag(lane):
-    return f"C{lane[2][0]}_{lane[2][1]}" if len(lane) > 2 else ""
+    return f"C{lane[2][0]}_{lane[2][1]}" if len(lane) > 2 and lane[2] else ""
 
 
 def rises(kind):
@@ -191,7 +193,7 @@ ADJ_RE = re.compile(r"(?m)^ScriptLog: PROBEADJ (\S+) (\S+) (\S+) (\S+) (\S+) (\S
 
 
 def wall_report(text):
-    """{pawn name: (first PickWallAdjust result, Destination it left, x of that call, farthest x reached)}."""
+    """{lane: (first PickWallAdjust result, Destination it left, x of that call, farthest x reached, physics after)}."""
     tracks = parse_log(text)
     out = {}
     for m in ADJ_RE.finditer(text):
@@ -200,7 +202,7 @@ def wall_report(text):
             continue
         dest = tuple(float(v) for v in m.group(6).split(","))
         at = min(tracks[name], key=lambda s: abs(s[0] - float(m.group(2))))
-        out[name] = (m.group(3) == "True", dest, at[1], max(s[1] for s in tracks[name]))
+        out[name] = (m.group(3) == "True", dest, at[1], max(s[1] for s in tracks[name]), int(m.group(4)))
     return {lane_of(tracks[n][0][2]): v for n, v in out.items()}
 
 
@@ -234,7 +236,8 @@ def build_lanes(mapgen, kind):
             continue
         if kind == "wall":
             c = WALL_LANES[i][1]
-            m.add(box(256, y + c - rise / 2, FLOOR, 288, y + c + rise / 2, FLOOR + 200, texture="UTtech1.bmTrim",
+            tall = WALL_LANES[i][3] if len(WALL_LANES[i]) > 3 else 200
+            m.add(box(256, y + c - rise / 2, FLOOR, 288, y + c + rise / 2, FLOOR + tall, texture="UTtech1.bmTrim",
                       csg="CSG_Add", name=f"Lane{i}"))
             m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up1{size_tag(WALL_LANES[i])}")
             continue
@@ -322,10 +325,10 @@ def main(argv):
         if "--ours" in argv:
             rows["ours"] = wall_report(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind], seconds))
         for who, rep in rows.items():
-            print(f"{who}:  lane     adjusted  destination left            at x   farthest x")
-            for lane, (ok, dest, x, far) in sorted(rep.items()):
+            print(f"{who}:  lane            adjusted  destination left            at x   farthest x  physics")
+            for lane, (ok, dest, x, far, phys) in sorted(rep.items()):
                 d = ", ".join(f"{v:.0f}" for v in dest)
-                print(f"      {lanes[lane][0]:>16}  {'yes' if ok else 'no':>8}  ({d:>22})  {x:6.0f}  {far:9.0f}")
+                print(f"      {lanes[lane][0]:>16}  {'yes' if ok else 'no':>8}  ({d:>22})  {x:6.0f}  {far:9.0f}  {phys:7}")
         return
     ours = None
     report = {"ledge": ledge_report, "air": air_report, "slide": slide_report, "entry": entry_report}.get(kind, step_report)

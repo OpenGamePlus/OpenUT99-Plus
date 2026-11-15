@@ -5,7 +5,7 @@ Append-only. Newest first. At most 3 bullets per stage.
 ## 2026-11-14 — PickWallAdjust with other pawn sizes
 
 - Probe tags take a collision size (`CRR_HH`). The ledge limit stays 77 with `CollisionHeight` 50, so it is a fixed height above the floor, not 2 × height; the engine now lifts the box a fixed 72.7 above the hover. The sidestep does follow the radius: the goal goes 2 × radius + 16 aside (50 at 17, 66 at 25). The clearance is 40–41 at 17 and 58–60 at 25, fitted as 2.25 × radius + 1.75. Ours matches all 7 wall and 6 ledge lanes.
-- Next: which comes first when both a jump and a sidestep fit.
+- Both fit (a block 40 high): the original jumps, as ours does. `PickWallAdjust` is now measured in every case we can build; what remains is how bots use it (state code), not the native.
 
 ## 2026-11-14 — the ledge jump limit does not depend on JumpZ
 

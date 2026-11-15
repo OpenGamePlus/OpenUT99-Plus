@@ -64,7 +64,7 @@ class ProbeLogTest(unittest.TestCase):
                 f"ScriptLog: PROBEADJ P0 1.1 False 1 400,0,0 230,{y - 50},69\n"  # later calls: only the first counts
                 f"ScriptLog: PROBE P0 1.5 236 {y} 44 1 0 0 0\n"
                 f"ScriptLog: PROBEADJ ghost 1.0 True 1 0,0,0 0,0,0\n")  # no track: left out
-        self.assertEqual(wall_report(text), {1: (True, (230.0, y - 50.0, 69.0), 230.0, 236.0)})
+        self.assertEqual(wall_report(text), {1: (True, (230.0, y - 50.0, 69.0), 230.0, 236.0, 1)})
 
 
 if __name__ == "__main__":
