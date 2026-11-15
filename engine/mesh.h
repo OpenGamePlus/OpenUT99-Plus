@@ -9,6 +9,9 @@
 namespace ut {
 
 Vec3 unpack_vert(uint32_t v);  // X 11, Y 11, Z 10 bits, signed
+Vec3 face_normal(Vec3 a, Vec3 b, Vec3 c);
+// Surface flags an actor's Style (Actor.ERenderStyle) adds to its mesh: 2 masked, 3 translucent, 4 modulated.
+uint32_t style_flags(uint8_t style);  // unit normal of a triangle (either winding: env-mapped skins use it)
 
 struct LodMesh {
     std::vector<Vec3> verts;   // every animation frame in turn, each frame_verts long: special verts, then model verts

@@ -1,8 +1,22 @@
 #include "mesh.h"
 
+#include <cmath>
 #include <stdexcept>
 
+#include "level.h"
+
 namespace ut {
+
+uint32_t style_flags(uint8_t style) {
+    return style == 2 ? uint32_t(PF_Masked) : style == 3 ? uint32_t(PF_Translucent) : style == 4 ? uint32_t(PF_Modulated) : 0u;
+}
+
+Vec3 face_normal(Vec3 a, Vec3 b, Vec3 c) {
+    Vec3 u{b.x - a.x, b.y - a.y, b.z - a.z}, v{c.x - a.x, c.y - a.y, c.z - a.z};
+    Vec3 n{u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x};
+    float len = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
+    return len > 0 ? Vec3{n.x / len, n.y / len, n.z / len} : Vec3{0, 0, 1};
+}
 
 Vec3 unpack_vert(uint32_t v) {
     auto sx = [](uint32_t x, int bits) { return float(int32_t(x << (32 - bits)) >> (32 - bits)); };
