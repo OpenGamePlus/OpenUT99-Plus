@@ -400,8 +400,8 @@ void World::register_ai() {
     });
     // PickWallAdjust: measured (probe OU-Ledge) for a walking pawn blocked by a ledge: up to 77 high True, falling, with
     // Velocity GroundSpeed toward Destination and JumpZ up; 78 and up False; False while falling. The limit is the same
-    // for JumpZ 250, 325 and 400 (at 250 it jumps ledges it cannot clear). shortcut: we test the box raised to 77.5 above
-    // the floor, read as 2 * CollisionHeight (39) - 0.5 (unverified for other heights). Then a sideways adjust (below).
+    // for JumpZ 250, 325 and 400 (at 250 it jumps ledges it cannot clear) and for CollisionHeight 39 and 50: we test the
+    // box raised to 77.5 above the floor. Then a sideways adjust (below).
     vm.add_native("PickWallAdjust", [this](Obj* self, std::vector<Value*>&, Value& r) {
         Value* mode = vm_.prop(self, "Physics");
         const Value* can = vm_.prop(self, "bCanJump");
@@ -422,7 +422,7 @@ void World::register_ai() {
             Vec3 p{from.x + side.x, from.y + side.y, from.z + side.z};
             return !trace_world(self, from, p, ext).hit && !trace_world(self, p, {p.x + dx * reach, p.y + dy * reach, p.z}, ext).hit;
         };
-        if (can && can->i && jz && jz->f > 0 && clear(at, {0, 0, 2 * hv->f - 4.8f - 0.5f})) {  // box bottom 77.5 above the floor
+        if (can && can->i && jz && jz->f > 0 && clear(at, {0, 0, 72.7f})) {  // from the hover: box bottom 77.5 above the floor
             float speed = gs ? gs->f : 400;
             Value* v = vm_.prop(self, "Velocity");
             v->v[0] = dx * speed, v->v[1] = dy * speed, v->v[2] = jz->f;
@@ -431,13 +431,15 @@ void World::register_ai() {
             r.i = 1;
             return;
         }
-        // Sideways (probe OU-Wall: walls 40-48 wide, centred or off to one side): left of the way to Destination first,
-        // then right; it fits if the box clears 40 to that side (a wall 46 wide is passed, 48 not), and Destination
-        // becomes 50 to that side and 25 up. shortcut: 40 and 50 measured with radius 17 only.
+        // Sideways (probe OU-Wall, walls centred or off to one side): left of the way to Destination first, then right.
+        // Destination becomes 2 * radius + 16 to that side (50 at radius 17, 66 at 25) and 25 up. It fits if the box
+        // clears a distance found between 40 and 41 at radius 17 (walls 46 wide passed, 48 not) and between 58 and 60 at
+        // radius 25 (66 passed, 70 not). shortcut: that distance is a line fitted through both, 2.25 * radius + 1.75.
+        float check = 2.25f * rv->f + 1.75f, aside = 2 * rv->f + 16;
         for (float side : {1.f, -1.f}) {
             Vec3 l{dy * side, -dx * side, 0};  // facing +x, left is -y
-            if (!clear(at, {l.x * 40, l.y * 40, 0})) continue;
-            dest->v[0] = at.x + l.x * 50, dest->v[1] = at.y + l.y * 50, dest->v[2] = at.z + 25;
+            if (!clear(at, {l.x * check, l.y * check, 0})) continue;
+            dest->v[0] = at.x + l.x * aside, dest->v[1] = at.y + l.y * aside, dest->v[2] = at.z + 25;
             r.i = 1;
             return;
         }

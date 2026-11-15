@@ -45,9 +45,10 @@ GRAVITY = 950
 ENTRY_LANES = [(46, 100), (46, 200), (46, 300), (46, 400), (46, 600), (55, 400), (65, 400), (80, 400)]
 ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
-LEDGE_LANES = [(32, 325), (77, 325), (78, 325), (64, 250), (72, 250), (77, 250), (78, 250),
-               (40, 400), (64, 400), (77, 400), (78, 400)]
-WALL_LANES = [(40, 0), (46, 0), (48, 0), (46, -20), (46, 20)]  # (width, centre offset in y)
+LEDGE_LANES = [(77, 325), (78, 325), (77, 325, (17, 50)), (78, 325, (17, 50)), (98, 325, (17, 50)),
+               (100, 325, (17, 50))]  # (height, JumpZ[, (radius, collision height)])
+WALL_LANES = [(40, 0), (46, 0), (48, 0), (46, -20), (46, 20), (66, 0, (25, 39)), (70, 0, (25, 39))]
+# (width, centre offset in y[, (radius, collision height)])
 FLOOR = 0
 MAPS = {"wall": "OU-Wall", "ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
@@ -102,13 +103,21 @@ def wedge(x0, x1, y0, y1, z0, z1, texture, name):
     return Brush(polys=polys, name=name, csg="CSG_Add")
 
 
+def size_label(lane):
+    return f" r{lane[2][0]}h{lane[2][1]}" if len(lane) > 2 else ""
+
+
+def size_tag(lane):
+    return f"C{lane[2][0]}_{lane[2][1]}" if len(lane) > 2 else ""
+
+
 def rises(kind):
     if kind == "steps":
         return [(f"{h}", h) for h in STEP_HEIGHTS]
     if kind == "ledge":
-        return [(f"{h} j{jz}", h) for h, jz in LEDGE_LANES]
+        return [(f"{l[0]} j{l[1]}{size_label(l)}", l[0]) for l in LEDGE_LANES]
     if kind == "wall":
-        return [(f"{w}@{c:+g}", w) for w, c in WALL_LANES]
+        return [(f"{l[0]}@{l[1]:+g}{size_label(l)}", l[0]) for l in WALL_LANES]
     if kind == "air":
         return [(f"air {c:g}", c) for c in AIR_CONTROLS]
     if kind == "slide":
@@ -227,12 +236,12 @@ def build_lanes(mapgen, kind):
             c = WALL_LANES[i][1]
             m.add(box(256, y + c - rise / 2, FLOOR, 288, y + c + rise / 2, FLOOR + 200, texture="UTtech1.bmTrim",
                       csg="CSG_Add", name=f"Lane{i}"))
-            m.actor("PathNode", 0, y, FLOOR + 60, Tag="Up1")
+            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up1{size_tag(WALL_LANES[i])}")
             continue
         if kind == "ledge":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
                       name=f"Lane{i}"))
-            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up{rise}J{LEDGE_LANES[i][1]}")
+            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up{rise}J{LEDGE_LANES[i][1]}{size_tag(LEDGE_LANES[i])}")
             continue
         if kind == "steps":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
@@ -316,7 +325,7 @@ def main(argv):
             print(f"{who}:  lane     adjusted  destination left            at x   farthest x")
             for lane, (ok, dest, x, far) in sorted(rep.items()):
                 d = ", ".join(f"{v:.0f}" for v in dest)
-                print(f"      {lanes[lane][0]:>9}  {'yes' if ok else 'no':>8}  ({d:>22})  {x:6.0f}  {far:9.0f}")
+                print(f"      {lanes[lane][0]:>16}  {'yes' if ok else 'no':>8}  ({d:>22})  {x:6.0f}  {far:9.0f}")
         return
     ours = None
     report = {"ledge": ledge_report, "air": air_report, "slide": slide_report, "entry": entry_report}.get(kind, step_report)
@@ -337,7 +346,7 @@ def main(argv):
         fmt = lambda h, e: f"{'yes' if e[1] else 'no':>6}  {e[2]:5.1f}  {'yes' if e[3] and e[3] - e[0] > h - 2 else 'no':>6}"
         for lane, e in sorted(report(tracks).items()):
             label, h = lanes[lane] if 0 <= lane < len(lanes) else ("?", 0)
-            row = f"{label:>9}  {fmt(h, e):>30}"
+            row = f"{label:>16}  {fmt(h, e):>30}"
             if ours is not None:
                 row += f"   {fmt(h, ours[lane]):>30}" if lane in ours else "   (no track)"
             print(row)

@@ -1,6 +1,7 @@
 // OpenUT99-Plus probe (ADR 0008): a probe pawn at every PathNode of the map, facing the node's yaw. A node tagged
 // AirNN gets a ProbeFaller with AirControl NN / 100, WalkNNN a ProbePawn with GroundSpeed NNN, UpNNN a
-// jumping ProbePawn walking to a point NNN higher (UpNNNJMMM: with JumpZ MMM), Drop a ProbeDropper,
+// jumping ProbePawn walking to a point NNN higher (UpNNNJMMM: with JumpZ MMM;
+// a further CRR_HH: collision radius RR and height HH), Drop a ProbeDropper,
 // any other node a ProbePawn.
 class ProbeMutator extends Mutator;
 
@@ -8,7 +9,7 @@ function PostBeginPlay()
 {
 	local PathNode N;
 	local Pawn P;
-	local string T;
+	local string T, S;
 
 	Super.PostBeginPlay();
 	foreach AllActors(class'PathNode', N)
@@ -32,6 +33,12 @@ function PostBeginPlay()
 			if (P != None)
 			{
 				T = Mid(T, 2);
+				if (InStr(Caps(T), "C") >= 0)
+				{
+					S = Mid(T, InStr(Caps(T), "C") + 1);
+					P.SetCollisionSize(float(Left(S, InStr(S, "_"))), float(Mid(S, InStr(S, "_") + 1)));
+					T = Left(T, InStr(Caps(T), "C"));
+				}
 				if (InStr(Caps(T), "J") >= 0)
 				{
 					P.JumpZ = float(Mid(T, InStr(Caps(T), "J") + 1));
