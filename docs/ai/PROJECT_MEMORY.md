@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-15 — routes pay SpecialCost: bots stop planning through jump spots
+
+- Lifts: the map's lift edges (flag 0x20, distance 500) were in our graph, but `JumpSpot` edges looked as cheap. Over the 26 DM maps with a `LiftCenter`, 1,534 routes went through jump spots that need a translocator. Routes now add the `SpecialCost(Seeker)` of nodes with `bSpecialCost` (`JumpSpot` answers 100,000,000 to a bot that cannot use it). Jump-spot routes 1,534 → 63, lifts moved 38 → 49, rides 28 → 31.
+- `--maps 60`: 8,541 units per bot (8,250), 128 deaths, no script error. Still: DM-Agony and DM-Peak routes never pass their lift; no route test (needs a script class with `SpecialCost`).
+
 ## 2026-11-14 — pointReachable limits measured
 
 - `calibrate.py reach` (`OU-Reach`, `ProbeReacher`): the original's `pointReachable` reaches climbs up to 29 and drops up to 24 without `bCanJump`, and climbs up to 52 and drops up to 118 with it. Ours had a 120 climb and a 400 drop. Our straight-line test also clipped the edge on drops, so a drop now walks off at its own height first. Ours matches all eight lanes.
