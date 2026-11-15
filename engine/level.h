@@ -43,6 +43,9 @@ struct Model {
     std::vector<LightMap> lightmaps;
     std::vector<uint8_t> light_bits;
     std::vector<int32_t> lights;
+    // Leaf hulls: at a node's collision_bound, the convex solid behind it as node refs (bit 0x40000000: plane
+    // flipped) up to -1, then its bounding box as 6 f32 (min, max). See level.md (collision hulls).
+    std::vector<int32_t> leaf_hulls;
     std::vector<int32_t> zone_actors;  // object refs, index = zone number
     int32_t polys = 0;
 };

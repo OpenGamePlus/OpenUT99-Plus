@@ -2,6 +2,57 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — sliding on steep slopes measured and modelled
+
+- `calibrate.py slide` (`OU-Slide`, `ProbeDropper` dropped on 46–80° slopes): the original slides with 1 / (1 + nz²) of gravity's pull along the slope (fit within 0.003 at five angles, mechanism unknown). The engine applies it; ours matches within 0.3 %. Synthetic test on a 60° slope.
+- Still apart: walking into a too-steep slope, the original starts its slide at 347 along it (ours 278), so it gets to 171 where ours gets to 100. Simple rules tried do not fit.
+- `--maps 60`: 8,294 units per bot (8,348), 141 deaths, bots still falling 59 (same), inside solid only the two map-data items, no script error. Next: the walk-to-slide switch, with entry speeds varied.
+
+## 2026-11-14 — air control measured: none from latent moves
+
+- `calibrate.py air` (`OU-Air`, `ProbeFaller`; the mutator reads `AirNN` PathNode tags as AirControl): a falling non-player pawn doing `MoveTo` gets no horizontal acceleration in the original, for AirControl 0 to 1; ours matches, gravity 950 in both.
+- So the steep-slope gap is the slide itself: the original's slide starts at 347 along the slope and slows by 414 units/s² (ours 278 and 683). Next: a slide calibration (pawns dropped on slopes of several angles, with and without speed) to find the rule.
+
+## 2026-11-14 — leaf hulls in the box trace; sliding on steep slopes
+
+- The Model's `leaf hulls` decoded (level.md): per solid cell, its planes and bounding box. The box trace checks a reached solid leaf against its hull (the box sides act as bevels): on the probe's ramps ours now matches the original to 0.2 at the crest (it rose 30 too high). C++ vs Python 0 differ; ASan/UBSan clean on all maps and two 20 s matches.
+- Walking into a slope too steep to walk turns to falling along it, and falling slides the rest of the tick, as the probe showed. Ours reaches 81 up a 46° slope, the original about 165: falling has no air control yet.
+- `--maps 60`: 8,348 units per bot (5,328), 139 deaths (97), no bot inside solid (shell cases and a dropped minigun are), bots still falling 59 (50), no script error. Next: measure air control with the probe.
+
+## 2026-11-14 — our VM runs the same probe
+
+- `ut_script --map MAP?mutator=Pkg.Class`: the URL options reach `InitGame`, so the retail game loads the mutator; `UTVM_LOG=1` prints every log line; spawned instances are numbered per class (ProbePawn0...). `calibrate.py --ours build/ut_script` reports both engines side by side.
+- Steps: identical. Ramps: past a crest ours rises ~30 too high (no bevel planes in the box trace) and ours climbs 45.7–46° slopes the original cannot.
+- Next: bevel planes in the box trace, checked with `calibrate.py ramps --ours`.
+
+## 2026-11-14 — walking hover from the probe; floor limit verified
+
+- Walking pawns now hover 4.8 above the floor (measured) and step 25 from there: a synthetic test climbs 29, not 30, as the original. `--maps 60`: 5,328 units per bot (5,374), 97 deaths (88), bots still falling 50 (68), no script error.
+- `calibrate.py ramps` (true wedge brushes, `--angles`): the original walks 45.5° (normal z 0.7009), not 45.7° (0.6984), so the 0.7 floor limit holds. On steeper slopes it still gets about 120 units up, not compared yet.
+- Next: our VM running the same probe (mutator from the URL), so both engines answer each calibration; then slopes too steep to walk, falling bots.
+
+## 2026-11-14 — the probe measures the original
+
+- [ADR 0008](../architecture/adr/0008-probe-the-original.md): `tools/probe/OUProbe` (our UnrealScript: a mutator spawning a `ProbePawn` at each PathNode, logging its state each tick) runs on the original's Linux dedicated server; `calibrate.py` compiles it, builds the map with ut99-mapgen, runs the server and reads the log.
+- First numbers (`OU-Steps`): a walking pawn hovers 4.8 above the floor and climbs steps up to 29, not 30 (we use 25 on the floor). Pawns driven by `Acceleration` in `Tick` do not move; the probe walks with `MoveTo`.
+- Snags: the 469f-rc5 Linux `ucc make` recurses forever into `Classes/./` (compiled with a 469e System instead); a pawn spawned by a mutator needs `bGameRelevant` or the game discards it; killing the server with SIGKILL loses its log. Next: our engine with the hover and step, then ramps.
+
+## 2026-11-14 — ut99-mapgen set up; the install is 469f-rc5
+
+- ut99-mapgen ([ADR 0007](../architecture/adr/0007-community-repositories.md)) runs outside the repo on a copy of the install with the OldUnreal Linux patch; its self test passes (13/13). It builds our own calibration maps with the retail `ucc`; maps stay out of the repo.
+- Matching the patch found the install is 469f-rc5, not 469e: `Manifest.ini` says 469e, but the packages are byte-identical to the v469f-rc5 Linux release. Docs that called it 469e corrected (ADR 0006 and older stages keep the old name).
+- ADR 0007 corrected the same day: the UT Bible is a players' guide, not engine documentation. Next: a calibration map (steps, ramps, ledges) observed in the original and in our engine.
+
+## 2026-11-14 — blocking between actors
+
+- `World::move` sweeps the moving centre against the cylinders of actors that block it (grown by both sizes); both must block the other's kind (`bBlockPlayers` toward a `bIsPlayer` pawn, else `bBlockActors`; inferred from retail defaults, unverified), so pawns block pawns and projectiles still touch them. A blocked move sends `Bump` both ways, falling and flying included (`HitWall` stays for BSP and movers).
+- `--maps 60`: 5,374 units per bot (5,267 before), 88 deaths (51), no script error; bots still falling unchanged (68 vs 63, an older problem). Costs ≈ 20 % of a match's time (every move scans every actor).
+- The sweep now names the map of an actor inside solid: a CTF-Gauntlet bot was pushed into a wall by the lift it rode (riders carried without collision, known). Next: bots stepping around a blocking pawn, or the falling bots.
+
+## 2026-11-14 — community repositories reviewed
+
+- [ADR 0007](../architecture/adr/0007-community-repositories.md): UT Bible, ut99-mapgen (own test maps) and UTCompress (`.uz`) allowed as public documentation; ut99-recomp forbidden (from disassembly); Epic's Ut99PubSrc not used for now; exported script repositories redundant.
+
 ## 2026-11-11 — the match in the viewer
 
 - `ut_mapview MAP --play`: the world runs in the window; `engine/play_view.*` draws live actors each frame (LodMesh actors at their animation frame, blended, and mover brushes); drag to look, F follows a bot; `--play --shot --time S --follow` for checks. The LodMesh reader now keeps every frame.

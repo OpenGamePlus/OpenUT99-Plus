@@ -107,17 +107,21 @@ void trace_from_env(ut::Vm& vm) {
     }
 }
 
-int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& name, float seconds, const std::string& game) {
+int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& url, float seconds, const std::string& game) {
     trace_from_env(vm);
     ut::World w(vm, packages);
+    size_t q = url.find('?');  // MAP?Key=Value?...: the options go to InitGame, as in the game's URLs
+    std::string name = url.substr(0, q), options = q == std::string::npos ? "" : url.substr(q);
     w.load(name, game);
     size_t loaded = w.actors.size();
-    w.begin_play();
+    w.begin_play(options);
     int ticks = int(seconds / 0.05f), pawns = 0, kills = 0;
     float travelled = 0;
     play(vm, w, seconds, &pawns, &travelled, &kills);
     std::map<std::string, int> lines;
     for (const std::string& l : vm.log) lines[l]++;
+    if (std::getenv("UTVM_LOG"))  // every log line in order (e.g. probe output, ADR 0008)
+        for (const std::string& l : vm.log) std::printf("%s\n", l.c_str());
     int errors = 0;
     for (const auto& [e, n] : w.errors) errors += n;
     std::printf("%s: %zu actors loaded, game %s, %zu actors after %d ticks; %d script errors, %zu log lines\n",
@@ -175,7 +179,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
             if (mode && mode->i == 2) falling++, falling_classes[vm.name_of(o->cls)]++;
             if (loc && collide && collide->i && w.model() && ut::point_solid(*w.model(), {loc->v[0], loc->v[1], loc->v[2]})) {
                 in_solid++;
-                solid_classes[vm.name_of(o->cls)]++;
+                solid_classes[vm.name_of(o->cls) + " (" + d.path().stem().string() + ")"]++;
             }
         }
     }
@@ -188,7 +192,7 @@ int maps(ut::PackageSet& packages, const std::string& root, float seconds, const
         ranked(falling_classes, 8);
     }
     if (in_solid) {
-        std::printf("inside solid, by class:\n");
+        std::printf("inside solid, by class (map):\n");
         ranked(solid_classes, 8);
     }
     std::printf("errors:\n");

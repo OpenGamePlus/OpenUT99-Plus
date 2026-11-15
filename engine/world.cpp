@@ -353,13 +353,15 @@ void World::load(const std::string& map, const std::string& default_game) {
     map_actors_ = actors.size();  // the map's actors, then the game
 }
 
-void World::begin_play() {
+void World::begin_play(const std::string& options) {
     // Play begins, then InitGame, then each phase over the map's actors and the game; actors spawned from here on
     // get their events at once (unverified order, inferred from what the retail scripts need: the mutator spawned in
     // InitGame must be ready before the map's actors ask it, and Level.Game must be set when the game's
     // PreBeginPlay spawns its GameReplicationInfo).
     begun_ = true;
-    if (game) guarded(game, "InitGame", {Value::of(VT::Str), Value::of(VT::Str)});  // Options, out Error
+    Value opts = Value::of(VT::Str);
+    opts.s = options;
+    if (game) guarded(game, "InitGame", {opts, Value::of(VT::Str)});  // Options, out Error
     size_t n = map_actors_;
     for (const char* event : {"PreBeginPlay", "BeginPlay", "PostBeginPlay", "SetInitialState"})
         for (size_t i = 0; i < n; i++)
@@ -386,7 +388,7 @@ Obj* World::spawn(Obj* cls, Obj* spawner, Obj* owner, const std::string* tag, co
 }
 
 void World::touches(Obj* o) {
-    // Collision cylinders (bCollideActors) that overlap touch (shortcut: no blocking, Bump or encroachment yet).
+    // Collision cylinders (bCollideActors) that overlap touch; blocking is in move() (blocking_actor).
     auto f = [this](Obj* x, const char* n) {
         const Value* v = vm_.prop(x, n);
         return v ? v->f : 0.f;
@@ -432,6 +434,13 @@ void World::touches(Obj* o) {
         }
         if (deleted_.count(o)) return;
     }
+}
+
+void World::bump(Obj* o, Obj* x) {
+    Value a = Value::of(VT::Object), b = Value::of(VT::Object);
+    a.o = o, b.o = x;
+    guarded(x, "Bump", {a});
+    if (!deleted_.count(o) && !deleted_.count(x)) guarded(o, "Bump", {b});
 }
 
 void World::destroy(Obj* o) {
@@ -511,8 +520,9 @@ Hit World::move(Obj* o, Vec3 d, Obj** what) {
         Vec3 ext{r ? r->f : 0, r ? r->f : 0, hh ? hh->f : 0};  // shortcut: the collision cylinder as a box
         h = trace_world(o, from, {from.x + d.x, from.y + d.y, from.z + d.z}, ext, what);
         Vec3 to{from.x + d.x * h.time, from.y + d.y * h.time, from.z + d.z * h.time};
-        // shortcut: expanded planes (no bevels) can let a box sink at convex edges; the exact point test refuses a
-        // move that takes the centre from empty space into solid. Upgrade with bevel planes.
+        // shortcut: mover brushes have no leaf hulls (no bevels), so a box may still sink at their convex edges; the
+        // exact point test refuses a move that takes the centre from empty space into solid. Drop it once movers get
+        // bevels and the sweep shows no actor ending inside solid.
         if (has_model_ && !point_solid(model_, from) && point_solid(model_, to)) {
             if (what) *what = level_info;
             float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
@@ -522,8 +532,41 @@ Hit World::move(Obj* o, Vec3 d, Obj** what) {
             return blocked;
         }
     }
+    if (Obj* x = blocking_actor(o, from, {from.x + d.x, from.y + d.y, from.z + d.z}, &h)) {
+        if (what) *what = x;
+    }
     loc->v[0] += d.x * h.time, loc->v[1] += d.y * h.time, loc->v[2] += d.z * h.time;
     return h;
+}
+
+Obj* World::blocking_actor(Obj* o, Vec3 a, Vec3 b, Hit* h) {
+    // The centre swept against each blocking actor's cylinder grown by o's (both radii, both heights). Rule
+    // (unverified, inferred from the retail defaults): both collide with actors and each blocks the other's kind,
+    // bBlockPlayers toward a bIsPlayer pawn, else bBlockActors; so projectiles (bBlockActors false) touch pawns.
+    // Actors that already overlap are not blocked (ray_cylinder skips a start inside), so they can part.
+    auto flag = [this](Obj* x, const char* n) {
+        const Value* v = vm_.prop(x, n);
+        return v && v->i;
+    };
+    auto blocks = [&](Obj* x, Obj* y) { return flag(x, flag(y, "bIsPlayer") ? "bBlockPlayers" : "bBlockActors"); };
+    if (!flag(o, "bCollideActors") || movers_.count(o)) return nullptr;
+    const Value* ro = vm_.prop(o, "CollisionRadius");
+    const Value* ho = vm_.prop(o, "CollisionHeight");
+    float t = h->time;
+    Vec3 n{0, 0, 0};
+    Obj* best = nullptr;
+    for (Obj* x : actors) {
+        if (x == o || deleted_.count(x) || movers_.count(x) || !flag(x, "bCollideActors") || !blocks(x, o) ||
+            !blocks(o, x))
+            continue;
+        const Value* rx = vm_.prop(x, "CollisionRadius");
+        const Value* hx = vm_.prop(x, "CollisionHeight");
+        float r = (ro ? ro->f : 0) + (rx ? rx->f : 0), hh = (ho ? ho->f : 0) + (hx ? hx->f : 0);
+        const Value* lx = vm_.prop(x, "Location");
+        if (lx && ray_cylinder(a, b, {lx->v[0], lx->v[1], lx->v[2]}, r, hh, &t, &n)) best = x;
+    }
+    if (best) h->hit = true, h->time = std::max(0.f, t - 0.001f), h->normal = n;  // pulled back like world hits
+    return best;
 }
 
 void World::physics(Obj* o, float dt) {
@@ -540,6 +583,7 @@ void World::physics(Obj* o, float dt) {
     };
     Obj* hit_actor = nullptr;
     auto wall = [&](const Hit& h) {
+        if (hit_actor && hit_actor != level_info && !movers_.count(hit_actor)) return bump(o, hit_actor);
         Value w = Value::of(VT::Object);
         w.o = hit_actor ? hit_actor : level_info;
         guarded(o, "HitWall", {hit_value(h), w});
@@ -572,6 +616,20 @@ void World::physics(Obj* o, float dt) {
                 wall(h);
                 float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
                 v[0] -= dot * h.normal.x, v[1] -= dot * h.normal.y, v[2] -= dot * h.normal.z;
+                // Measured (script.md, probe OU-Slide, 46-80 deg): sliding on a surface gains only 1 / (1 + nz^2) of
+                // gravity's pull along it (fitted to 0.003; the mechanism is unknown). Take back the rest.
+                if (h.normal.z > 0) {
+                    float gv[3] = {g ? g->v[0] : 0.f, g ? g->v[1] : 0.f, g ? g->v[2] : -950.f};
+                    float gn = gv[0] * h.normal.x + gv[1] * h.normal.y + gv[2] * h.normal.z;
+                    float nz2 = h.normal.z * h.normal.z, k = dt * nz2 / (1 + nz2);
+                    for (int c = 0; c < 3; c++) v[c] -= (gv[c] - gn * (&h.normal.x)[c]) * k;
+                }
+                // Slide the rest of the tick along the surface (a pawn sliding on a slope too steep to walk keeps
+                // moving, as measured in the original: script.md). shortcut: one slide; a second hit waits a tick.
+                if (mode->i == 2 && !deleted_.count(o)) {
+                    float rest = (1 - h.time) * dt;
+                    move(o, {v[0] * rest, v[1] * rest, v[2] * rest});
+                }
             }
             return;
         }

@@ -37,6 +37,7 @@ struct Obj {
     int32_t ref = 0;
     Obj* cls = nullptr;            // instance: its class (a package object of a class export)
     Obj* defaults = nullptr;       // class object: its default object, built on first use
+    int number = -1;               // spawned instance: its name is the class name + this number
     std::map<const Obj*, std::vector<Value>> vars;  // property declaration -> elements
     // States: the current state, and where its code continues (code of `code_state`, which may be a super state).
     Obj* state = nullptr;
@@ -146,6 +147,7 @@ private:
     std::map<std::pair<const Package*, int32_t>, Function> functions_;
     std::map<std::pair<const Package*, int32_t>, std::unique_ptr<Obj>> objects_;
     std::vector<std::unique_ptr<Obj>> instances_;
+    std::map<const Obj*, int> spawn_counts_;  // class -> instances spawned (their name numbers)
     std::map<const Obj*, Local> decls_;
     std::map<const Obj*, Obj*> supers_;
     std::map<std::pair<const Obj*, std::string>, Obj*> props_;

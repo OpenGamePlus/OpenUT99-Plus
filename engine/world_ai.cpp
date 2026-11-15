@@ -177,15 +177,24 @@ void World::walk(Obj* o, float dt) {
     Vec3 delta{v[0] * dt, v[1] * dt, 0};
     Obj* blocker = nullptr;
     Hit h = move(o, delta, &blocker);
-    if (h.hit && blocker && movers_.count(blocker)) {  // walking into a door or lift: Bump both, HitWall the walker
-        Value a = Value::of(VT::Object), b = Value::of(VT::Object), n = Value::of(VT::Vector);
-        a.o = o, b.o = blocker;
-        n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
-        guarded(blocker, "Bump", {a});
-        guarded(o, "Bump", {b});
+    if (h.hit && blocker && blocker != level_info) {  // walking into an actor, door or lift: Bump both
+        bump(o, blocker);
         // shortcut: HitWall only for movers (bots open doors there); BSP walls would cancel moves our coarse steering
         // still slides along. Upgrade with the original step-up failure rule once steering follows paths closely.
-        if (!deleted_.count(o)) guarded(o, "HitWall", {n, b});
+        Value b = Value::of(VT::Object), n = Value::of(VT::Vector);
+        b.o = blocker;
+        n.v[0] = h.normal.x, n.v[1] = h.normal.y, n.v[2] = h.normal.z;
+        if (movers_.count(blocker) && !deleted_.count(o)) guarded(o, "HitWall", {n, b});
+    }
+    if (h.hit && h.normal.z > 0.05f && h.normal.z < 0.7f) {
+        // A slope too steep to walk: the original turns to falling with the velocity along the slope and slides up
+        // until gravity brings it back (probe OU-Ramps, 45.7-60 deg; the trigger rule is inferred, unverified).
+        float dot = v[0] * h.normal.x + v[1] * h.normal.y + v[2] * h.normal.z;
+        for (int k = 0; k < 3; k++) v[k] -= dot * (&h.normal.x)[k];
+        vm_.prop(o, "Physics")->i = 2;
+        set_base(o, nullptr);
+        guarded(o, "Falling");
+        return;
     }
     for (int k = 0; k < 2 && h.hit && h.normal.z >= 0.7f; k++) {  // a ramp: go on along its surface
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
@@ -193,7 +202,7 @@ void World::walk(Obj* o, float dt) {
         delta = {rest.x - dot * h.normal.x, rest.y - dot * h.normal.y, -dot * h.normal.z};
         h = move(o, delta);
     }
-    if (h.hit) {  // blocked (a wall, or a ramp foot the slide could not climb): step up (25, unverified), else slide
+    if (h.hit) {  // blocked (a wall, or a ramp foot the slide could not climb): step up 25 (from the hover below: climbs 29 as measured), else slide
         Vec3 rest{delta.x * (1 - h.time), delta.y * (1 - h.time), 0};
         Value saved = *loc;
         move(o, {0, 0, 25});
@@ -235,6 +244,9 @@ void World::walk(Obj* o, float dt) {
         guarded(o, "Falling");
     } else {
         set_base(o, floor);  // the LevelInfo on BSP floors (unverified), else the mover it stands on
+        // Measured (script.md, probe OU-Steps): a walking pawn rests 4.8 above the floor, so a 25 step up from
+        // there climbs 29, not 30, as the original does.
+        move(o, {0, 0, 4.8f});
     }
 }
 

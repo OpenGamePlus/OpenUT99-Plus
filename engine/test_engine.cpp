@@ -404,7 +404,7 @@ static void test_read_class() {
 // 50 Sum's local U; 51 Three's parameter U; 52 LatentFloat of T.
 // 35-37 TimerRate, TimerCounter, bTimerLoop of T; 38 Timer(): X = X * 2.
 // 39-47 Location, Velocity, Acceleration, Physics, bCollideActors, bCollideWorld, CollisionRadius, CollisionHeight,
-// GroundSpeed of T; 48 Touch(Other): X = X * 2.
+// GroundSpeed of T; 48 Touch(Other): X = X * 2. 53-55 bBlockActors, bBlockPlayers, bIsPlayer of T.
 static Package vm_package() {
     Package p;
     p.version = 69;
@@ -531,6 +531,7 @@ static Package vm_package() {
     add(-2, 31, "U", prop(0, 0));
     add(-2, 29, "U", prop(0, kParm | kOutParm));
     add(-4, 1, "LatentFloat", prop(0, 0));
+    for (const char* v : {"bBlockActors", "bBlockPlayers", "bIsPlayer"}) add(-3, 1, v, prop(0, 0));  // 53-55
     return p;
 }
 
@@ -611,7 +612,18 @@ static void test_vm() {
     assert(vm.prop(walker, "Location")->t == VT::Vector && vm.prop(walker, "Physics")->t == VT::Byte);
     const float* at = vm.prop(walker, "Location")->v;
     assert(walker->vars[vm.object(p, 17)][0].i == 10 && other->vars[vm.object(p, 17)][0].i == 10);  // both touched once
-    assert(at[0] > 79 && at[0] < 80.5f && std::fabs(at[2] - 20) < 0.5f && vm.prop(walker, "Physics")->i == 1);
+    assert(at[0] > 79 && at[0] < 80.5f && std::fabs(at[2] - 24.8f) < 0.5f && vm.prop(walker, "Physics")->i == 1);
+    assert(w.errors.empty());
+    // Both block actors now: the walker, back at x = 0, stops where the cylinders meet (60 - 40) and does not touch.
+    vm.prop(walker, "Location")->v[0] = 0;
+    w.tick(0.01f);  // UnTouch
+    for (Obj* o : {walker, other}) vm.prop(o, "bBlockActors")->i = 1;
+    for (int k = 0; k < 10; k++) w.tick(0.05f);
+    assert(at[0] > 19 && at[0] < 20.01f && walker->vars[vm.object(p, 17)][0].i == 10);  // no new Touch
+    vm.prop(walker, "bIsPlayer")->i = 1;  // a player is blocked by bBlockPlayers (false): walks through
+    for (int k = 0; k < 10; k++) w.tick(0.05f);
+    assert(at[0] > 79);
+    for (Obj* o : {walker, other}) vm.prop(o, "bBlockActors")->i = 0;
     assert(w.errors.empty());
     // A ramp rising 30 degrees from x = 100 (solid below it): the walker goes up it instead of stopping.
     Model ramp;
@@ -625,6 +637,35 @@ static void test_vm() {
     vm.prop(walker, "bCollideActors")->i = 0;
     for (int k = 0; k < 20; k++) w.tick(0.05f);
     assert(wl[0] > 150 && wl[2] > 40 && !point_solid(ramp, {wl[0], wl[1], wl[2]}));
+    // A step from x = 100: the original climbs 29, not 30 (script.md, measured), from its 4.8 hover.
+    for (float rise : {29.f, 30.f}) {
+        Model stair;
+        Node ground{}, face{}, top{};
+        ground.plane[2] = 1, ground.back = -1, ground.front = 1;
+        face.plane[0] = -1, face.plane[3] = -100, face.front = -1, face.back = 2;
+        top.plane[2] = 1, top.plane[3] = rise, top.front = -1, top.back = -1;
+        stair.nodes = {ground, face, top};
+        w.set_model(stair);
+        wl[0] = 0, wl[1] = 0, wl[2] = 20;
+        for (int k = 0; k < 20; k++) w.tick(0.05f);
+        assert(rise < 29.5f ? wl[0] > 150 && std::fabs(wl[2] - rise - 24.8f) < 0.5f : wl[0] < 81 && wl[2] < 25.5f);
+    }
+    // Dropped on a 60 degree slope (solid below the plane through the origin), it slides down gaining 1 / (1 + nz^2)
+    // of gravity along the slope: 0.8 * 950 * sin 60 = 658 units/s (script.md, measured).
+    Model steep;
+    Node face60{};
+    face60.plane[0] = -0.8660254f, face60.plane[2] = 0.5f, face60.back = -1, face60.front = -1;
+    steep.nodes = {face60};
+    w.set_model(steep);
+    wl[0] = 0, wl[1] = 0, wl[2] = 60;
+    vm.prop(walker, "Physics")->i = 2;
+    float* wv = vm.prop(walker, "Velocity")->v;
+    wv[0] = wv[1] = wv[2] = 0;
+    auto speed = [&] { return std::sqrt(wv[0] * wv[0] + wv[1] * wv[1] + wv[2] * wv[2]); };
+    for (int k = 0; k < 10; k++) w.tick(0.05f);
+    float s0 = speed();
+    for (int k = 0; k < 5; k++) w.tick(0.05f);
+    assert(vm.prop(walker, "Physics")->i == 2 && wv[0] < 0 && std::fabs((speed() - s0) / 0.25f - 658.2f) < 10);
     p.data[size_t(p.exports[14].offset) + 18 + 9] = 4;  // inner skip too long: runs past the code, must throw
     Vm vm2(nullptr);
     vm2.bind_natives(p);
@@ -653,6 +694,24 @@ static void test_collision() {
     assert(trace(m, {0, 0, 5}, {0, 0, -50}, {10, 10, 10}).time < 0.05f);  // but cannot sink further
     h = trace(m, {95, 0, 60}, {95, 0, 0}, {10, 10, 10});  // box overlapping the wall slides down along it to the floor
     assert(h.hit && h.normal.z == 1 && std::fabs(h.time - 50.f / 60.f) < 0.01f);
+    // Leaf hull: the floor's solid only spans x, y in [-100, 100] (z -1000..0). A box coming down beyond it does
+    // not hit (the expanded plane alone would say it does); inside it lands as before; one coming in sideways at
+    // floor height hits the hull's box side (a bevel).
+    Model slab;
+    Node top{};
+    top.plane[2] = 1, top.back = -1, top.front = -1, top.collision_bound = 0;
+    slab.nodes = {top};
+    slab.leaf_hulls = {0, -1};
+    for (float f : {-100.f, -100.f, -1000.f, 100.f, 100.f, 0.f}) {
+        int32_t bits;
+        std::memcpy(&bits, &f, 4);
+        slab.leaf_hulls.push_back(bits);
+    }
+    assert(!trace(slab, {150, 0, 100}, {150, 0, -100}, {10, 10, 10}).hit);
+    h = trace(slab, {50, 0, 100}, {50, 0, -100}, {10, 10, 10});
+    assert(h.hit && std::fabs(h.time - 0.45f) < 0.01f && h.normal.z == 1);
+    h = trace(slab, {200, 0, -5}, {0, 0, -5}, {10, 10, 10});
+    assert(h.hit && std::fabs(h.time - 0.45f) < 0.01f && h.normal.x == 1);
     float t = 1;
     Vec3 n{};
     assert(ray_cylinder({-100, 0, 0}, {100, 0, 0}, {0, 0, 0}, 10, 20, &t, &n) && std::fabs(t - 0.45f) < 1e-4f && n.x == -1);
