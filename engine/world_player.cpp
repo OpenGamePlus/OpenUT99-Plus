@@ -76,8 +76,12 @@ void World::player_tick(float dt) {
     set("aStrafe", input.strafe);
     set("aBaseX", input.turn);
     set("aLookUp", input.look);
-    set("aMouseX", input.mouse_x);
-    set("aMouseY", input.mouse_y);
+    // UpdateRotation turns by 32 x DeltaTime x aTurn, so the input system hands mouse axes over as a rate.
+    // shortcut: the 0.1 scale is tuned by feel (0.32 degrees a pixel at the default sensitivity 3), unverified;
+    // upgrade with a measurement of the original's mouse scale.
+    float rate = dt > 0 ? 0.1f / dt : 0;
+    set("aMouseX", input.mouse_x * rate);
+    set("aMouseY", input.mouse_y * rate);
     if (input.duck) set("aUp", -300);  // Duck: Button bDuck | Axis aUp Speed=-300.0
     const Value* was_fire = vm_.prop(player, "bFire");
     const Value* was_alt = vm_.prop(player, "bAltFire");
