@@ -217,7 +217,8 @@ int main(int argc, char** argv) {
                             if (ev.button.button == SDL_BUTTON_RIGHT) alt_fire = down;
                         }
                         if (ev.type == SDL_MOUSEBUTTONUP || (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_FOCUS_LOST))
-                            looking = mouse_free && play && play->world.player, fire = alt_fire = false;
+                            looking = mouse_free && play && play->world.player;
+                        if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_FOCUS_LOST) fire = alt_fire = false;
                         if (ev.type == SDL_KEYDOWN && !ev.key.repeat && play && play->world.player) {
                             SDL_Keycode key = ev.key.keysym.sym;
                             if (key == SDLK_SPACE) play->world.input.jump = true;
