@@ -195,7 +195,8 @@ void World::walk(Obj* o, float dt) {
         const Value* gs = vm_.prop(o, "GroundSpeed");
         float speed = (gs ? gs->f : 400) * (speed_.count(o) ? speed_[o] : 1.f);
         v[0] = acc.x / alen * speed, v[1] = acc.y / alen * speed;
-        if (Value* rot = vm_.prop(o, "Rotation")) rot->r[1] = yaw_to({0, 0, 0}, acc);
+        const Value* human = vm_.prop(o, "Player");  // a player's script sets its own rotation (strafing keeps it)
+        if (Value* rot = vm_.prop(o, "Rotation"); rot && !(human && human->o)) rot->r[1] = yaw_to({0, 0, 0}, acc);
     } else {
         float k = std::max(0.f, 1 - 8 * dt);  // shortcut: friction, unverified
         v[0] *= k, v[1] *= k;

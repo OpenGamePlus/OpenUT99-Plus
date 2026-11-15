@@ -16,6 +16,21 @@
 
 namespace ut {
 
+// What the keys and mouse say this tick, in the retail default bindings' units (User.ini aliases).
+struct PlayerInput {
+    float forward = 0;               // aBaseY: +300 forward, -300 back
+    float strafe = 0;                // aStrafe: +300 right, -300 left
+    float turn = 0, look = 0;        // aBaseX (+-150) / aLookUp (+-100): keyboard turning
+    float mouse_x = 0, mouse_y = 0;  // aMouseX / aMouseY: pixels this tick x 6 (Axis aMouseX Speed=6.0)
+    bool fire = false, alt_fire = false, duck = false;  // bFire / bAltFire / bDuck while held
+    bool jump = false;               // pressed this tick: exec Jump
+    int weapon = 0;                  // 1-10 pressed this tick: exec SwitchWeapon(N); 0 none
+    std::string command;             // an exec function without arguments to call this tick (e.g. "Suicide")
+};
+// A fixed 20 s of play for headless checks: fire (starts the match), forward, strafe right, hold fire, Suicide at
+// 10 s, fire (respawn), forward. t: match time at the start of the tick.
+PlayerInput scripted_input(float t, float dt);
+
 class World {
 public:
     World(Vm& vm, PackageSet& packages);  // registers the Actor natives on vm
@@ -42,8 +57,19 @@ public:
     void update_region(Obj* o);
     void set_region(Obj* o, const char* var, Vec3 at, const char* event);
 
+    // The local player (world_player.cpp). login: Level.Game's Login + PostLogin, after begin_play; options as in a
+    // URL ("?Name=Player?Class=Botpack.TMale1"). Returns the pawn, or nullptr (the reason in errors["login: ..."]).
+    Obj* login(const std::string& options, const std::string& player_class);
+    Obj* player = nullptr;  // the logged-in pawn; nullptr when none or destroyed
+    PlayerInput input;      // read by tick(); the one-tick fields (jump, weapon, mouse) are cleared after
+    // The player's PlayerCalcView: camera location and rotation (Unreal units); false without a player.
+    bool player_view(Vec3* location, int32_t rotation[3]);
+
 private:
     void guarded(Obj* o, const std::string& event, std::vector<Value> args = {});
+    Obj* find_class(const std::string& pkg_dot_class);  // "Package.Class" -> class object, nullptr if none
+    void player_tick(float dt);  // input variables, exec commands, PlayerInput, PlayerTick
+
     void destroy(Obj* o);
     void physics(Obj* o, float dt);
     // Sweeps the actor's collision box (if it collides with the world); *what = what it hit (LevelInfo = the BSP).

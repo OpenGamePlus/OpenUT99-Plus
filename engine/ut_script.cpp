@@ -1,7 +1,8 @@
 // ut_script DIR Package.Class.Function [ARG...]   run one UnrealScript function in the VM and print its results
 // ut_script DIR --run Package.Class [TICKS]       spawn the class, enter its auto state, tick its state code (0.1 s)
 // ut_script DIR --states                          every class of System/*.u: auto state run for 30 ticks, outcomes
-// ut_script DIR --map MAP [SECONDS]               load a map's actors, begin play, tick (0.05 s); errors and log ranked
+// ut_script DIR --map MAP [SECONDS [--player]]    load a map's actors, begin play, tick (0.05 s); errors and log ranked;
+//                                                 --player logs in a player who plays a fixed 20 s (scripted_input)
 // ut_script DIR --maps [SECONDS]                  the same for every map of Maps/, errors summed over all of them
 // Arguments are given per parameter (int, float, bool True/False, string, name); out parameters are printed after.
 // UTVM_TRACE=Fire,TakeDamage logs every call of those script functions (debugging).
@@ -64,11 +65,43 @@ std::string run_states(ut::Vm& vm, ut::Obj* cls, int ticks, bool* has_auto) {
     }
 }
 
-// Ticks the world for `seconds`, summing how far each pawn travels (sampled once a second).
-void play(ut::Vm& vm, ut::World& w, float seconds, int* pawns, float* travelled, int* kills) {
+// What the scripted player did (ut::scripted_input), for the --player line.
+struct PlayerMeter {
+    float moved = 0, ammo_start = -1, ammo_end = -1;
+    int yaw_strafe_start = 0, yaw_strafe_end = 0;
+    bool respawned = false;
+};
+
+float ammo(ut::Vm& vm, ut::Obj* pawn) {
+    const ut::Value* w = vm.prop(pawn, "Weapon");
+    const ut::Value* a = w && w->o ? vm.prop(w->o, "AmmoType") : nullptr;
+    const ut::Value* n = a && a->o ? vm.prop(a->o, "AmmoAmount") : nullptr;
+    return n ? float(n->i) : -1;
+}
+
+// Ticks the world for `seconds`, summing how far each pawn travels (sampled once a second); a logged-in player
+// plays ut::scripted_input and is measured into *meter.
+void play(ut::Vm& vm, ut::World& w, float seconds, int* pawns, float* travelled, int* kills, PlayerMeter* meter = nullptr) {
     std::map<ut::Obj*, ut::Vec3> last;
+    ut::Obj* me = w.player;
+    ut::Vec3 prev{};
     for (int t = 0; float(t) * 0.05f < seconds; t++) {
+        float now = float(t) * 0.05f;
+        if (me && w.player) w.input = ut::scripted_input(now, 0.05f);
         w.tick(0.05f);
+        if (me && meter && !w.destroyed(me)) {
+            const ut::Value* l = vm.prop(me, "Location");
+            ut::Vec3 at{l->v[0], l->v[1], l->v[2]};
+            float dx = at.x - prev.x, dy = at.y - prev.y, dz = at.z - prev.z, d = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (t > 0 && d < 200) meter->moved += d;  // larger jumps are spawns
+            prev = at;
+            int yaw = vm.prop(me, "Rotation")->r[1];
+            if (t == 120) meter->yaw_strafe_start = yaw;  // 6 s: strafing begins
+            if (t == 159) meter->yaw_strafe_end = yaw;    // 8 s: it ends
+            if (t == 159) meter->ammo_start = ammo(vm, me);  // before the 8-10 s fire
+            if (t == 199) meter->ammo_end = ammo(vm, me);
+            if (t >= 260 && vm.prop(me, "Health")->i > 0) meter->respawned = true;  // 13 s on: alive again
+        }
         if (t % 20 != 19) continue;
         const ut::Value* p = vm.prop(w.level_info, "PawnList");
         for (int n = 0; p && p->o && n < 256; p = vm.prop(p->o, "nextPawn"), n++) {
@@ -107,7 +140,8 @@ void trace_from_env(ut::Vm& vm) {
     }
 }
 
-int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& url, float seconds, const std::string& game) {
+int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& url, float seconds, const std::string& game,
+        const std::string& player_class) {
     trace_from_env(vm);
     ut::World w(vm, packages);
     size_t q = url.find('?');  // MAP?Key=Value?...: the options go to InitGame, as in the game's URLs
@@ -117,7 +151,9 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& url, float seco
     w.begin_play(options);
     int ticks = int(seconds / 0.05f), pawns = 0, kills = 0;
     float travelled = 0;
-    play(vm, w, seconds, &pawns, &travelled, &kills);
+    PlayerMeter meter;
+    ut::Obj* me = player_class.empty() ? nullptr : w.login("?Name=Player?Class=" + player_class, player_class);
+    play(vm, w, seconds, &pawns, &travelled, &kills, &meter);
     std::map<std::string, int> lines;
     for (const std::string& l : vm.log) lines[l]++;
     if (std::getenv("UTVM_LOG"))  // every log line in order (e.g. probe output, ADR 0008)
@@ -128,6 +164,15 @@ int map(ut::Vm& vm, ut::PackageSet& packages, const std::string& url, float seco
                 name.c_str(), loaded, vm.name_of(w.game ? w.game->cls : nullptr).c_str(), w.actors.size(), ticks, errors,
                 vm.log.size());
     std::printf("pawns: %d, %.0f units travelled, %d deaths\n", pawns, travelled, kills);
+    if (!player_class.empty() && !me) std::printf("player: login failed\n");
+    if (me) {
+        const ut::Value* pri = vm.prop(me, "PlayerReplicationInfo");
+        std::printf("player: %s state %s, moved %.0f units, yaw kept %s while strafing, ammo %.0f -> %.0f, deaths %.0f, "
+                    "respawned %s\n",
+                    vm.name_of(me->cls).c_str(), vm.name_of(me->state).c_str(), meter.moved,
+                    meter.yaw_strafe_start == meter.yaw_strafe_end ? "YES" : ("NO (" + std::to_string(meter.yaw_strafe_start) + " -> " + std::to_string(meter.yaw_strafe_end) + ")").c_str(), meter.ammo_start, meter.ammo_end,
+                    pri && pri->o ? vm.prop(pri->o, "Deaths")->f : 0.f, meter.respawned ? "YES" : "NO");
+    }
     const ut::Value* pawn = vm.prop(w.level_info, "PawnList");
     for (int n = 0; pawn && pawn->o && n < 64; pawn = vm.prop(pawn->o, "nextPawn"), n++) {
         ut::Obj* o = pawn->o;
@@ -256,7 +301,10 @@ int main(int argc, char** argv) {
                 if (argc < 4) throw std::runtime_error("--map needs a map name");
                 ut::Ini ini = ut::read_ini(root + "/System/UnrealTournament.ini");
                 const auto& game = ini["Engine.Engine"]["DefaultGame"];
-                return map(vm, packages, argv[3], argc > 4 ? std::strtof(argv[4], nullptr) : 5.f, game.empty() ? "" : game[0]);
+                bool with_player = argc > 5 && std::string(argv[5]) == "--player";
+                const auto& cls = ini["URL"]["Class"];  // the retail default player class (Botpack.TMale1)
+                return map(vm, packages, argv[3], argc > 4 ? std::strtof(argv[4], nullptr) : 5.f, game.empty() ? "" : game[0],
+                           with_player ? (cls.empty() ? "Botpack.TMale1" : cls[0]) : "");
             }
             std::string target = argc > 3 ? argv[3] : "";
             size_t dot = target.find('.');
