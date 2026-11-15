@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — the ledge jump limit does not depend on JumpZ
+
+- `calibrate.py ledge` lanes now carry `JumpZ` (`UpNNNJMMM`). With JumpZ 250, 325 and 400, the original's `PickWallAdjust` jumps at ledges up to 77 and not at 78; at 250 it jumps at ledges it cannot clear. Our apex-based guess was wrong (it predicted 50 at 250 and 101 at 400). Now a fixed box lift (2 × `CollisionHeight` − 0.5 from the floor); ours matches all 11 lanes.
+- Sideways adjust (`calibrate.py wall`, `OU-Wall`): left first, then right; it fits if the box clears 40 to that side (walls 46 wide pass, 48 not), and `Destination` becomes 50 aside and 25 up. Modelled; ours matches all five lanes. `--maps 60`: 8,368 units per bot, 140 deaths, no script error (neutral). Next: whether both limits follow `CollisionHeight` / radius.
+
 ## 2026-11-14 — mesh skins: empty slots, environment maps, Style
 
 - Found while taking the README shots. CTF-Face's asteroids drew flat grey: `boulder1M` / `boulder2M` point their material at an empty slot, and they now take the mesh's first texture (unverified). `UDamage` uses `bMeshEnviroMap` with `Texture`, now drawn with a static environment map. Actor `Style` (masked / translucent / modulated) was ignored, so translucent effects drew black (DM-Liandri's teleporter); it now adds to the mesh flags. Fixed in both the static scene and the play view.
