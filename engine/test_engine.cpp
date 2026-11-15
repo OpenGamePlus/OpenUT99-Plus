@@ -650,6 +650,19 @@ static void test_vm() {
         for (int k = 0; k < 20; k++) w.tick(0.05f);
         assert(rise < 29.5f ? wl[0] > 150 && std::fabs(wl[2] - rise - 24.8f) < 0.5f : wl[0] < 81 && wl[2] < 25.5f);
     }
+    // Walking into a 75 degree face from x = 100 (normal z 0.259): a wall, as in the original; neither the 25 step
+    // nor the 4.8 hover may climb it (script.md, probe OU-Entry).
+    Model face;
+    Node base{}, wall75{};
+    base.plane[2] = 1, base.back = -1, base.front = 1;
+    wall75.plane[0] = -0.9659258f, wall75.plane[2] = 0.2588190f, wall75.plane[3] = -96.59258f;
+    wall75.back = -1, wall75.front = -1;
+    face.nodes = {base, wall75};
+    w.set_model(face);
+    vm.prop(walker, "Physics")->i = 1;
+    wl[0] = 0, wl[1] = 0, wl[2] = 24.8f;
+    for (int k = 0; k < 30; k++) w.tick(0.05f);
+    assert(vm.prop(walker, "Physics")->i == 1 && wl[0] < 100 && wl[2] < 30);
     // Dropped on a 60 degree slope (solid below the plane through the origin), it slides down gaining 1 / (1 + nz^2)
     // of gravity along the slope: 0.8 * 950 * sin 60 = 658 units/s (script.md, measured).
     Model steep;

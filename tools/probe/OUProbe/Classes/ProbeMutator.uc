@@ -1,5 +1,6 @@
 // OpenUT99-Plus probe (ADR 0008): a probe pawn at every PathNode of the map, facing the node's yaw. A node tagged
-// AirNN gets a ProbeFaller with AirControl NN / 100, one tagged Drop a ProbeDropper, any other node a ProbePawn.
+// AirNN gets a ProbeFaller with AirControl NN / 100, WalkNNN a ProbePawn with GroundSpeed NNN, Drop a ProbeDropper,
+// any other node a ProbePawn.
 class ProbeMutator extends Mutator;
 
 function PostBeginPlay()
@@ -17,6 +18,12 @@ function PostBeginPlay()
 			P = Spawn(class'ProbeFaller', , , N.Location, N.Rotation);
 			if (P != None)
 				P.AirControl = float(Mid(T, 3)) / 100.0;
+		}
+		else if (Left(T, 4) ~= "Walk")
+		{
+			P = Spawn(class'ProbePawn', , , N.Location, N.Rotation);
+			if (P != None)
+				P.GroundSpeed = float(Mid(T, 4));
 		}
 		else if (T ~= "Drop")
 			P = Spawn(class'ProbeDropper', , , N.Location, N.Rotation);

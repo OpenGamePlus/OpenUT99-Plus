@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "probe"))
-from calibrate import LANE_GAP, LANE_Y0, air_report, parse_log, slide_report, step_report  # noqa: E402
+from calibrate import LANE_GAP, LANE_Y0, air_report, entry_report, parse_log, slide_report, step_report  # noqa: E402
 
 LOG = """Log: Bringing Level OU-Steps.MyLevel up for play (20)...
 ScriptLog: PROBE ProbePawn0 0.25 0.00 -1050.00 45.00 2 0.00 0.00 -200.00
@@ -39,6 +39,15 @@ class ProbeLogTest(unittest.TestCase):
         track[1] = track[1][:5] + (-1000, 0, 0)  # a landing spike among the first two sliding samples: left out
         track.append((1.0, 300, LANE_Y0, 100, 2, -900, 0, -900))  # below the lower third: ignored
         self.assertAlmostEqual(slide_report({"D": track})[0], 500.0)  # speed grows 50 per 0.1 s
+    def test_entry_report(self):
+        c, s45 = 0.6946584, 0.7193398  # cos, sin 46 degrees (lane 0)
+        track = [(0.3, 0, LANE_Y0, 60, 2, 0, 0, -100),  # spawn drop: before walking, not the switch
+                 (0.6, 10, LANE_Y0, 44, 1, 100, 0, 0), (0.7, 20, LANE_Y0, 44, 1, 100, 0, 0),
+                 (0.8, 25, LANE_Y0, 50, 2, 100 * c, 0, 100 * s45), (0.9, 28, LANE_Y0, 56, 2, 0, 0, 0)]
+        along, top = entry_report({"P": track})[0]
+        self.assertAlmostEqual(along[0], 100.0, places=3)
+        self.assertEqual((len(along), top), (2, 60))
+
 
 if __name__ == "__main__":
     unittest.main()

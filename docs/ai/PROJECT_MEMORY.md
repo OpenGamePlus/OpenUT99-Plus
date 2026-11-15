@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — walking into steep faces: the original's wall limit; three of our bugs
+
+- `calibrate.py entry` (`OU-Entry`, `WalkNNN` tags set `GroundSpeed`): the original switches to falling against slopes up to about 75° and treats steeper faces as walls (the limit moves between runs); its slide start velocity is not along the slope and fits no simple rule (not modelled).
+- The probe exposed three bugs of ours: the 4.8 hover was applied over a steep face the floor probe touched (climbing 75–80° faces 4.8 a tick), a step could end on a steep face, and a pawn wedged between floor and face fell forever. Fixed (hover and steps only onto walkable floor, landing when the slide meets a floor, faces under normal z 0.263 are walls); synthetic 75° test.
+- `--maps 60`: bots still falling 49 (59), 8,310 units per bot, no script error. Next: the remaining falling bots, case by case.
+
 ## 2026-11-14 — sliding on steep slopes measured and modelled
 
 - `calibrate.py slide` (`OU-Slide`, `ProbeDropper` dropped on 46–80° slopes): the original slides with 1 / (1 + nz²) of gravity's pull along the slope (fit within 0.003 at five angles, mechanism unknown). The engine applies it; ours matches within 0.3 %. Synthetic test on a 60° slope.
