@@ -2,6 +2,11 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — README in the family format, with screenshots
+
+- The README follows OpenBF1942-Plus: banner, badges, six languages (en, es, pt, fr, de, ru), screenshots, what works, how to try, roadmap, transparency, notice. Shots taken with `ut_mapview --shot` (`--play --follow` for bots): DM-Curse][, CTF-Coret, DM-Morpheus.
+- ADR 0001 gains the family's exception: a few screenshots of our engine drawing retail maps, credited to Epic Games for identification only. Left out: CTF-Face and AS-Frigate shots, which show an untextured sky mesh and black holes.
+
 ## 2026-11-14 — falling bots: jumping ledges as the original does
 
 - Of the bots "still falling" at the end of a sweep, most were simply mid-jump at the snapshot (none stayed in the air 3 s on the maps checked). Real defect: bots hopping in place against a ledge (DM-Codex). Our walk physics jumped by itself straight up, and our falling projected away the forward speed.
