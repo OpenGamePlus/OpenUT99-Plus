@@ -51,7 +51,7 @@ World position of a mesh vertex v (as the engine draws it; checked visually on p
 
 world = Location + R(actor Rotation) · R(RotOrigin)⁻¹ · (Scale × DrawScale ⊙ (v − Origin))
 
-R(pitch, yaw, roll) is the UE rotation (axes X = (cp·cy, cp·sy, sp), Y = (sr·sp·cy − cr·sy, sr·sp·sy + cr·cy, −sr·cp), Z = (−(cr·sp·cy + sr·sy), cy·sr − cr·sp·sy, cr·cp)). Mesh Z scale is typically twice X/Y because Z is packed in 10 bits. Wedge U, V bytes are divided by 256. A material's texture: the actor's `MultiSkins[i]`, else the mesh's texture i, else `Skin`.
+R(pitch, yaw, roll) is the UE rotation (axes X = (cp·cy, cp·sy, sp), Y = (sr·sp·cy − cr·sy, sr·sp·sy + cr·cy, −sr·cp), Z = (−(cr·sp·cy + sr·sy), cy·sr − cr·sp·sy, cr·cp)). Mesh Z scale is typically twice X/Y because Z is packed in 10 bits. Wedge U, V bytes are divided by 256. A material's texture: the actor's `MultiSkins[i]`, else the mesh's texture i, else `Skin`. Some retail meshes point a material at an empty slot (CTF-Face's `boulder1M`, `boulder2M`: material texture 2, only slot 1 set); our engine then takes the mesh's first texture (unverified: to check against the original's picture). An actor with `bMeshEnviroMap` (e.g. `UDamage`) shows its `Texture` instead, environment-mapped. Its `Style` (`ERenderStyle`: 2 masked, 3 translucent, 4 modulated) adds to each material's flags.
 
 ## SkeletalMesh
 

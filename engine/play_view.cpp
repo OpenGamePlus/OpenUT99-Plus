@@ -122,6 +122,9 @@ void PlayView::add_mesh(Obj* a, const LodMesh& m, const Obj* mesh_obj) {
     };
     std::vector<Value>* multi = vm_.prop_array(a, "MultiSkins");
     const Value* skin = vm_.prop(a, "Skin");
+    const Value* em = vm_.prop(a, "bMeshEnviroMap");
+    const Value* tx = vm_.prop(a, "Texture");
+    const Export* enviro = em && em->i && tx ? export_of(tx->o) : nullptr;
     std::map<size_t, size_t> slot_batch;  // material slot -> batch index
     for (const LodMesh::Face& f : m.faces) {
         if (f.material >= m.materials.size()) continue;
@@ -129,7 +132,8 @@ void PlayView::add_mesh(Obj* a, const LodMesh& m, const Obj* mesh_obj) {
         size_t slot = size_t(std::max(mat.texture, 0));
         auto bs = slot_batch.find(slot);
         if (bs == slot_batch.end()) {
-            // Texture of material slot i: MultiSkins[i], else the mesh's own texture i, else Skin.
+            // Same rule as scene.cpp: MultiSkins[i], the mesh's texture i, Skin, the mesh's first texture; with
+            // bMeshEnviroMap, Texture mapped from the face normal.
             const Package* tp = nullptr;
             const Export* te = nullptr;
             if (multi && slot < multi->size() && export_of((*multi)[slot].o)) tp = (*multi)[slot].o->pkg, te = export_of((*multi)[slot].o);
@@ -138,13 +142,22 @@ void PlayView::add_mesh(Obj* a, const LodMesh& m, const Obj* mesh_obj) {
                 tp = o.package, te = o.exp && o.exp->size ? o.exp : nullptr;
             }
             if (!te && skin && export_of(skin->o)) tp = skin->o->pkg, te = export_of(skin->o);
-            uint32_t flags = (mat.flags & (PF_Masked | PF_Translucent | PF_Modulated)) | PF_TwoSided;
+            for (size_t k = 0; !te && k < m.textures.size(); k++) {
+                Object o = set_.resolve(*mesh_obj->pkg, m.textures[k]);
+                tp = o.package, te = o.exp && o.exp->size ? o.exp : nullptr;
+            }
+            if (enviro) tp = tx->o->pkg, te = enviro;
+            const Value* style = vm_.prop(a, "Style");
+            uint32_t flags = ((mat.flags | style_flags(style ? uint8_t(style->i) : 1)) & (PF_Masked | PF_Translucent | PF_Modulated)) | PF_TwoSided;
             bs = slot_batch.emplace(slot, batch(image(tp, te, flags & PF_Masked), flags)).first;
         }
+        Vec3 p[3];
+        for (int k = 0; k < 3; k++) p[k] = world(size_t(m.wedges[f.wedge[k]].vertex) + size_t(m.special_verts));
+        Vec3 n = enviro ? face_normal(p[0], p[1], p[2]) : Vec3{};
         for (int k = 0; k < 3; k++) {
             const LodMesh::Wedge& w = m.wedges[f.wedge[k]];
-            Vec3 p = world(size_t(w.vertex) + size_t(m.special_verts));
-            out_[bs->second].verts.push_back({p.x, p.y, p.z, float(w.u) / 256.f, float(w.v) / 256.f, 0, 0});
+            float u = enviro ? 0.5f + 0.5f * n.x : float(w.u) / 256.f, v = enviro ? 0.5f - 0.5f * n.z : float(w.v) / 256.f;
+            out_[bs->second].verts.push_back({p[k].x, p[k].y, p[k].z, u, v, 0, 0});
         }
     }
 }

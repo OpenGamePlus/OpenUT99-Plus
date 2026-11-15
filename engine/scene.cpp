@@ -172,7 +172,12 @@ static void add_mesh_actor(PackageSet& set, Props& props, std::map<const Export*
         Vec3 w = apply(ra, apply(ro, s));
         return Vec3{loc.x + w.x, loc.y + w.y, loc.z + w.z};
     };
-    // Texture of material slot i: MultiSkins[i], else the mesh's own texture i, else Skin.
+    // Texture of material slot i: MultiSkins[i], else the mesh's own texture i, else Skin, else (shortcut, unverified)
+    // the mesh's first texture: the boulder meshes of CTF-Face point their material at an empty slot. With
+    // bMeshEnviroMap, Texture on every slot, mapped from the face normal (shortcut: static, not view dependent).
+    Object enviro;
+    if (Props::Found em = props.find(actor, "bMeshEnviroMap"); em.prop && em.prop->bool_value)
+        if (Props::Found tx = props.find(actor, "Texture"); tx.prop) enviro = set.resolve(*tx.pkg, prop_ref(*tx.pkg, *tx.prop));
     std::map<size_t, size_t> batch_of_slot;
     float aw = float(scene.lightmap.width), ah = float(scene.lightmap.height);
     for (const LodMesh::Face& f : m.faces) {
@@ -189,14 +194,19 @@ static void add_mesh_actor(PackageSet& set, Props& props, std::map<const Export*
                 Props::Found sk = props.find(actor, "Skin");
                 if (sk.prop) tex = set.resolve(*sk.pkg, prop_ref(*sk.pkg, *sk.prop));
             }
-            uint32_t flags = mat.flags & (PF_Masked | PF_Translucent | PF_Modulated);
+            for (size_t k = 0; !tex.exp && k < m.textures.size(); k++) tex = set.resolve(*mesh_obj.package, m.textures[k]);
+            if (enviro.exp) tex = enviro;
+            uint32_t flags = (mat.flags | style_flags(byte("Style", 1))) & (PF_Masked | PF_Translucent | PF_Modulated);
             bs = batch_of_slot.emplace(slot, batch_for(set, tex, flags | PF_TwoSided, tex.exp ? tex.exp->name.c_str() : "(mesh)", batch_of, scene)).first;
         }
         Batch& b = scene.batches[bs->second];
+        Vec3 p[3];
+        for (int k = 0; k < 3; k++) p[k] = world(m.verts[size_t(m.wedges[f.wedge[k]].vertex) + size_t(m.special_verts)]);  // frame 0
+        Vec3 n = enviro.exp ? face_normal(p[0], p[1], p[2]) : Vec3{};
         for (int k = 0; k < 3; k++) {
             const LodMesh::Wedge& w = m.wedges[f.wedge[k]];
-            Vec3 p = world(m.verts[size_t(w.vertex) + size_t(m.special_verts)]);  // frame 0
-            b.verts.push_back({p.x, p.y, p.z, float(w.u) / 256.f, float(w.v) / 256.f, 0.5f / aw, 0.5f / ah});
+            float u = enviro.exp ? 0.5f + 0.5f * n.x : float(w.u) / 256.f, v = enviro.exp ? 0.5f - 0.5f * n.z : float(w.v) / 256.f;
+            b.verts.push_back({p[k].x, p[k].y, p[k].z, u, v, 0.5f / aw, 0.5f / ah});
         }
     }
     scene.mesh_actors++;
