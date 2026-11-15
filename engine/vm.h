@@ -99,7 +99,8 @@ public:
     bool goto_state(Obj* o, const std::string& state, const std::string& label = "Begin");
     void tick(Obj* o, float dt);  // runs state code until it stops, sleeps or changes state
     // Calls the script function name on o (through its state) if it exists; returns whether it did.
-    bool event(Obj* o, const std::string& name, std::vector<Value> args = {}, Value* ret = nullptr);
+    bool event(Obj* o, const std::string& name, std::vector<Value>&& args = {}, Value* ret = nullptr);
+    bool event(Obj* o, const std::string& name, std::vector<Value>& args, Value* ret = nullptr);  // out parameters written back
     Value* prop(Obj* o, const std::string& name);  // first element of a variable by name; nullptr if none
     std::vector<Value>* prop_array(Obj* o, const std::string& name);  // all elements of a static array
     void instantiate(Obj* o);  // package object (e.g. a map actor) -> live instance: class defaults + its properties

@@ -550,6 +550,10 @@ static void test_vm() {
     assert(b.t == VT::Bool && b.i == 1);
     Obj* t = vm.object(p, 1);
     Obj* self = vm.spawn(t);
+    std::vector<Value> margs = {Value::of(VT::Int), Value::of(VT::Int), Value::of(VT::Int)};
+    margs[0].i = 6, margs[1].i = -7;
+    Value mret;
+    assert(vm.event(self, "Mul", margs, &mret) && mret.i == -42 && margs[2].i == -42);  // events return out parameters
     assert(vm.call(vm.function(p, 18), self, none).i == 15);              // instance X = 3 times default X = 5
     assert(self->vars[vm.object(p, 17)][0].i == 3 && vm.defaults(t)->vars[vm.object(p, 17)][0].i == 5);
     Value z = vm.call(vm.function(p, 20), self, none);
