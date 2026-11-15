@@ -1,6 +1,6 @@
 """Measure the original engine with our probe (ADR 0008).
 
-    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
+    python3 tools/probe/calibrate.py MAPGEN_DIR steps|ramps|air|slide|entry|ledge [--angles A,B,...] [--seconds S] [--no-build] [--ours UT_SCRIPT]
 
 MAPGEN_DIR is a ut99-mapgen checkout set up as in DEVELOPMENT_GUIDE: ut/ holds a copy of the install with the
 OldUnreal Linux patch that matches it (the server we measure); make-469e/ holds a System with the v469e Linux patch,
@@ -20,6 +20,8 @@ its steady acceleration along the slope while it slides down, against 950 sin(an
 "entry": ProbePawns walk into slopes too steep to walk (wedges 300 high) at several GroundSpeeds and angles; reports
 the speed along the slope on the first ticks after the switch to falling and how high each gets (--angles: lanes
 at those angles, all at 400).
+"ledge": like steps, but too high to step, with bCanJump and the MoveTo goal on top of the ledge; reports whether
+the pawn jumped, how high it got and where it ended up (on top or not).
 """
 import math
 import os
@@ -40,8 +42,9 @@ GRAVITY = 950
 ENTRY_LANES = [(46, 100), (46, 200), (46, 300), (46, 400), (46, 600), (55, 400), (65, 400), (80, 400)]
 ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
+LEDGE_HEIGHTS = [32, 48, 64, 76, 77, 78, 80]
 FLOOR = 0
-MAPS = {"steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
+MAPS = {"ledge": "OU-Ledge", "steps": "OU-Steps", "ramps": "OU-Ramps", "air": "OU-Air", "slide": "OU-Slide", "entry": "OU-Entry"}
 PROBE_RE = re.compile(r"(?m)^ScriptLog: PROBE (\S+) (" + r"\S+ " * 7 + r"\S+)")
 
 
@@ -97,6 +100,8 @@ def wedge(x0, x1, y0, y1, z0, z1, texture, name):
 def rises(kind):
     if kind == "steps":
         return [(f"{h}", h) for h in STEP_HEIGHTS]
+    if kind == "ledge":
+        return [(f"{h}", h) for h in LEDGE_HEIGHTS]
     if kind == "air":
         return [(f"air {c:g}", c) for c in AIR_CONTROLS]
     if kind == "slide":
@@ -150,6 +155,22 @@ def entry_report(tracks):
     return out
 
 
+def ledge_report(tracks, walk_from=0.5):
+    """{lane: (rest z, jumped, top z, z over the ledge)}: jumped is whether the pawn left the floor upward after it began
+    walking; z over the ledge is the lowest z once past its front edge (x > 256 + radius), None if it never got there."""
+    out = {}
+    for samples in tracks.values():
+        before = [s for s in samples if s[0] <= walk_from]
+        after = [s for s in samples if s[0] > walk_from]
+        if not before or not after:
+            continue
+        rest_z = before[-1][3]
+        jumped = any(s[4] == 2 and s[7] > 0 for s in after)
+        past = [s[3] for s in after if 273 < s[1] < 1000]
+        out[lane_of(samples[0][2])] = (rest_z, jumped, max(s[3] for s in after), min(past) if past else None)
+    return out
+
+
 def build_lanes(mapgen, kind):
     sys.path.insert(0, os.path.join(mapgen, "tools"))
     from build import Map
@@ -177,6 +198,11 @@ def build_lanes(mapgen, kind):
             m.add(wedge(256, 256 + run, y - 100, y + 100, FLOOR, FLOOR + SLIDE_RISE, "UTtech1.bmTrim", f"Lane{i}"))
             m.actor("PathNode", 256 + 0.75 * run, y, FLOOR + 0.75 * SLIDE_RISE + 39 + 17 * math.tan(math.radians(rise))
                     + 40, Tag="Drop")
+            continue
+        if kind == "ledge":
+            m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
+                      name=f"Lane{i}"))
+            m.actor("PathNode", 0, y, FLOOR + 60, Tag=f"Up{rise}")
             continue
         if kind == "steps":
             m.add(box(256, y - 100, FLOOR, 1024, y + 100, FLOOR + rise, texture="UTtech1.bmTrim", csg="CSG_Add",
@@ -252,7 +278,7 @@ def main(argv):
     if not tracks:
         raise SystemExit(f"no probe lines in {log_path}")
     ours = None
-    report = {"air": air_report, "slide": slide_report, "entry": entry_report}.get(kind, step_report)
+    report = {"ledge": ledge_report, "air": air_report, "slide": slide_report, "entry": entry_report}.get(kind, step_report)
     if "--ours" in argv:
         ours = report(parse_log(run_ours(os.path.abspath(argv[argv.index("--ours") + 1]), game, MAPS[kind], seconds)))
     lanes = rises(kind)
@@ -263,6 +289,16 @@ def main(argv):
             row = f"{lanes[lane][0]:>8}   {fmt(e):>32}"
             if ours is not None:
                 row += f"   {fmt(ours[lane]):>28}" if lane in ours else "   (no track)"
+            print(row)
+        return
+    if kind == "ledge":
+        print("ledge  original: jumped  top z  on top" + ("   ours: jumped  top z  on top" if ours else ""))
+        fmt = lambda h, e: f"{'yes' if e[1] else 'no':>6}  {e[2]:5.1f}  {'yes' if e[3] and e[3] - e[0] > h - 2 else 'no':>6}"
+        for lane, e in sorted(report(tracks).items()):
+            label, h = lanes[lane] if 0 <= lane < len(lanes) else ("?", 0)
+            row = f"{label:>5}  {fmt(h, e):>30}"
+            if ours is not None:
+                row += f"   {fmt(h, ours[lane]):>30}" if lane in ours else "   (no track)"
             print(row)
         return
     if kind == "slide":

@@ -2,6 +2,12 @@
 
 Append-only. Newest first. At most 3 bullets per stage.
 
+## 2026-11-14 — falling bots: jumping ledges as the original does
+
+- Of the bots "still falling" at the end of a sweep, most were simply mid-jump at the snapshot (none stayed in the air 3 s on the maps checked). Real defect: bots hopping in place against a ledge (DM-Codex). Our walk physics jumped by itself straight up, and our falling projected away the forward speed.
+- `calibrate.py ledge` (`OU-Ledge`, `UpNNN` tags raise the goal): the original never jumps by itself. Walls send `HitWall`, and `PickWallAdjust` jumps (400 toward the goal, `JumpZ` up) for ledges up to 77, from the step-up height. Falling moves by the tick's mean velocity, and air control applies the `Acceleration` the walk left (102/s at 0.05 × 2048). Modelled. Ours matches the jump split, and the earlier calibrations are unchanged.
+- `--maps 60`: still falling 56 actors (74), bots 41; 8,392 units per bot (8,310), 126 deaths, no script error; inside solid 3 dropped items. Next: the `JumpZ` scaling of the ledge limit, `PickWallAdjust`'s sideways adjust.
+
 ## 2026-11-14 — walking into steep faces: the original's wall limit; three of our bugs
 
 - `calibrate.py entry` (`OU-Entry`, `WalkNNN` tags set `GroundSpeed`): the original switches to falling against slopes up to about 75° and treats steeper faces as walls (the limit moves between runs); its slide start velocity is not along the slope and fits no simple rule (not modelled).
