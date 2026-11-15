@@ -27,21 +27,29 @@ int32_t yaw_to(Vec3 from, Vec3 to) {
 }  // namespace
 
 bool World::reachable(Obj* pawn, Vec3 dest) {
-    // shortcut: the pawn's box (raised by a step) fits along the straight line and there is floor under it every
-    // 48 units, no climb above 120 or drop below 400 (unverified); the original simulates the walk
+    // Climb and drop limits measured (probe OU-Reach, JumpZ 325, CollisionHeight 39): climbs up to 29 (a step) and
+    // drops up to 24 without bCanJump; with it, climbs up to 52 and drops up to 118. shortcut: otherwise the box (raised
+    // by a step) fits along the straight line with floor under it every 48 units; the original simulates the walk.
     Vec3 from = vec_of(vm_.prop(pawn, "Location"));
-    if (dest.z - from.z > 120) return false;
+    const Value* jump = vm_.prop(pawn, "bCanJump");
+    bool can_jump = jump && jump->i;
+    float climb_max = can_jump ? 52.5f : 29.5f, drop_max = can_jump ? 118.5f : 24.5f;
+    if (dest.z - from.z > climb_max || from.z - dest.z > drop_max) return false;
     if (!has_model_ && movers_.empty()) return true;
     const Value* rv = vm_.prop(pawn, "CollisionRadius");
     const Value* hv = vm_.prop(pawn, "CollisionHeight");
     float r = rv ? rv->f * 0.8f : 0, h = hv ? std::max(0.f, hv->f - 25) : 0;
-    if (trace_world(pawn, {from.x, from.y, from.z + 25}, {dest.x, dest.y, dest.z + 25}, {r, r, h}).hit) return false;
+    // Going down, it walks off at its own height and falls (a straight line would clip the edge it walks off).
+    Vec3 corner{dest.x, dest.y, std::max(from.z, dest.z) + 25};
+    if (trace_world(pawn, {from.x, from.y, from.z + 25}, corner, {r, r, h}).hit ||
+        trace_world(pawn, corner, {dest.x, dest.y, dest.z + 25}, {r, r, h}).hit)
+        return false;
     if (!vm_.prop(pawn, "Physics") || vm_.prop(pawn, "Physics")->i != 1) return true;  // flyers and swimmers
     float len = dist2d(from, dest), feet = hv ? hv->f : 0;
     for (float s = 48; s < len; s += 48) {
         float k = s / len;
         Vec3 p{from.x + (dest.x - from.x) * k, from.y + (dest.y - from.y) * k, from.z + (dest.z - from.z) * k};
-        if (!trace_world(pawn, p, {p.x, p.y, p.z - feet - 400}, {0, 0, 0}).hit) return false;  // a pit (lifts are floor)
+        if (!trace_world(pawn, p, {p.x, p.y, p.z - feet - drop_max}, {0, 0, 0}).hit) return false;  // a pit (lifts are floor)
     }
     return true;
 }

@@ -1,7 +1,8 @@
 // OpenUT99-Plus probe (ADR 0008): a probe pawn at every PathNode of the map, facing the node's yaw. A node tagged
 // AirNN gets a ProbeFaller with AirControl NN / 100, WalkNNN a ProbePawn with GroundSpeed NNN, UpNNN a
 // jumping ProbePawn walking to a point NNN higher (UpNNNJMMM: with JumpZ MMM;
-// a further CRR_HH: collision radius RR and height HH), Drop a ProbeDropper,
+// a further CRR_HH: collision radius RR and height HH), ReachX_Z_J a ProbeReacher asking about the point X ahead
+// and Z up (DZ: Z down; J 1: bCanJump), Drop a ProbeDropper,
 // any other node a ProbePawn.
 class ProbeMutator extends Mutator;
 
@@ -9,7 +10,7 @@ function PostBeginPlay()
 {
 	local PathNode N;
 	local Pawn P;
-	local string T, S;
+	local string T, S, Z;
 
 	Super.PostBeginPlay();
 	foreach AllActors(class'PathNode', N)
@@ -46,6 +47,20 @@ function PostBeginPlay()
 				}
 				ProbePawn(P).UpZ = float(T);
 				P.bCanJump = True;
+			}
+		}
+		else if (Left(T, 5) ~= "Reach")
+		{
+			P = Spawn(class'ProbeReacher', , , N.Location, N.Rotation);
+			if (P != None)
+			{
+				T = Mid(T, 5);
+				S = Mid(T, InStr(T, "_") + 1);
+				Z = Left(S, InStr(S, "_"));
+				if (Left(Z, 1) ~= "D")
+					Z = "-" $ Mid(Z, 1);
+				ProbeReacher(P).Offset = vector(N.Rotation) * float(Left(T, InStr(T, "_"))) + vect(0,0,1) * float(Z);
+				P.bCanJump = Mid(S, InStr(S, "_") + 1) == "1";
 			}
 		}
 		else if (T ~= "Drop")
