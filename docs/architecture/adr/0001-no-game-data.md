@@ -16,3 +16,4 @@ The project ships only original code and documentation. All game data is read at
 - No packages, extracted files, decompiled or exported UnrealScript, or executables in the repo; `out/` is git-ignored.
 - Tests use synthetic data; checks against retail data run locally only.
 - Format docs describe structure, not content; at most a short excerpt where a field needs an example.
+- Exception (2026-11-14): a few screenshots of our engine drawing retail maps, in `docs/images/` for the README, credited to Epic Games "for identification only", as the rest of the -Plus family does. No extracted textures, sounds or other assets.
