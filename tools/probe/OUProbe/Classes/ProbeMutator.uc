@@ -2,7 +2,7 @@
 // AirNN gets a ProbeFaller with AirControl NN / 100, WalkNNN a ProbePawn with GroundSpeed NNN, UpNNN a
 // jumping ProbePawn walking to a point NNN higher (UpNNNJMMM: with JumpZ MMM;
 // a further CRR_HH: collision radius RR and height HH), ReachX_Z_J a ProbeReacher asking about the point X ahead
-// and Z up (DZ: Z down; J 1: bCanJump), Drop a ProbeDropper,
+// and Z up (DZ: Z down; J 1: bCanJump; J above 1: also JumpZ J), Drop a ProbeDropper,
 // any other node a ProbePawn.
 class ProbeMutator extends Mutator;
 
@@ -60,7 +60,10 @@ function PostBeginPlay()
 				if (Left(Z, 1) ~= "D")
 					Z = "-" $ Mid(Z, 1);
 				ProbeReacher(P).Offset = vector(N.Rotation) * float(Left(T, InStr(T, "_"))) + vect(0,0,1) * float(Z);
-				P.bCanJump = Mid(S, InStr(S, "_") + 1) == "1";
+				Z = Mid(S, InStr(S, "_") + 1);
+				P.bCanJump = Z != "0";
+				if (float(Z) > 1)
+					P.JumpZ = float(Z);
 			}
 		}
 		else if (T ~= "Drop")

@@ -22,8 +22,8 @@ the speed along the slope on the first ticks after the switch to falling and how
 at those angles, all at 400).
 "ledge": like steps, but too high to step, with bCanJump and the MoveTo goal on top of the ledge; reports whether
 the pawn jumped, how high it got and where it ended up (on top or not). Lanes are (ledge height, JumpZ).
-"reach": a ProbeReacher per lane asks pointReachable for a point 400 ahead: on top of a block of growing height
-("up"), or on the floor below the platform it stands on ("down"); reports the answer.
+"reach": a ProbeReacher per lane asks pointReachable for a point 400 ahead: on top of a block ("up"), or on the floor
+below the platform it stands on ("down"), with or without bCanJump and with several JumpZ; reports the answer.
 "wall": a wall 200 high and 32 thick across each lane (lanes are its width and the offset of its centre), the goal
 straight behind it; reports what
 PickWallAdjust (called from HitWall) returns, the Destination it leaves, and whether the pawn got past the wall.
@@ -49,8 +49,8 @@ ENTRY_RISE = 300
 LANE_Y0, LANE_GAP = -1050, 300
 LEDGE_LANES = [(77, 325), (78, 325), (77, 325, (17, 50)), (78, 325, (17, 50)), (98, 325, (17, 50)),
                (100, 325, (17, 50))]  # (height, JumpZ[, (radius, collision height)])
-REACH_LANES = [("up", 29, 0), ("up", 30, 0), ("up", 52, 1), ("up", 53, 1), ("down", 24, 0), ("down", 25, 0),
-               ("down", 118, 1), ("down", 119, 1)]  # (up or down, height, bCanJump): the measured limits
+REACH_LANES = [("up", 29, 0), ("up", 30, 0), ("down", 24, 0), ("down", 25, 0), ("up", 52, 1), ("up", 53, 1), ("down", 118, 1),
+               ("down", 119, 1), ("up", 52, 400), ("up", 53, 400), ("up", 40, 250), ("down", 119, 250)]  # (up or down, height, bCanJump: 0, 1 or a JumpZ)
 REACH_X = 400
 WALL_LANES = [(40, 0), (46, 0), (48, 0), (46, -20), (46, 20), (66, 0, (25, 39)), (70, 0, (25, 39)), (40, 0, None, 40),
               (200, 0, None, 40)]
@@ -124,7 +124,7 @@ def rises(kind):
     if kind == "ledge":
         return [(f"{l[0]} j{l[1]}{size_label(l)}", l[0]) for l in LEDGE_LANES]
     if kind == "reach":
-        return [(f"{d} {h}{'' if j else ' nojump'}", h) for d, h, j in REACH_LANES]
+        return [(f"{d} {h}{' nojump' if not j else f' j{j}' if j > 1 else ''}", h) for d, h, j in REACH_LANES]
     if kind == "wall":
         return [(f"{l[0]}@{l[1]:+g}{size_label(l)}", l[0]) for l in WALL_LANES]
     if kind == "air":

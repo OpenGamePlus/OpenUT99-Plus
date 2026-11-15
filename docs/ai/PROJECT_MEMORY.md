@@ -5,7 +5,7 @@ Append-only. Newest first. At most 3 bullets per stage.
 ## 2026-11-14 — pointReachable limits measured
 
 - `calibrate.py reach` (`OU-Reach`, `ProbeReacher`): the original's `pointReachable` reaches climbs up to 29 and drops up to 24 without `bCanJump`, and climbs up to 52 and drops up to 118 with it. Ours had a 120 climb and a 400 drop. Our straight-line test also clipped the edge on drops, so a drop now walks off at its own height first. Ours matches all eight lanes.
-- `--maps 60`: 8,250 units per bot (8,368), 135 deaths, bots still falling 33 (45), no script error. Not checked: whether bots turn `bCanJump` on in script, and how the limits scale with `JumpZ` or size.
+- `--maps 60`: 8,250 units per bot (8,368), 135 deaths, bots still falling 33 (45), no script error. Bots play with `bCanJump` on and `JumpZ` 357.5. The limits are the same at `JumpZ` 250, 325 and 400 (twelve lanes, ours matches). Not measured: other collision sizes.
 
 ## 2026-11-14 — PickWallAdjust with other pawn sizes
 
