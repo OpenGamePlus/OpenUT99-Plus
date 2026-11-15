@@ -123,6 +123,25 @@ Obj* World::route(Obj* pawn, const std::function<float(Obj*, float)>& weight, fl
         float s = dist(at, p);
         if (s < 1200 && reachable(pawn, p)) d[n] = s, open.push({s, n});
     }
+    // Navigation points with bSpecialCost (JumpSpot, TranslocStart / Dest, PainPath) add what their SpecialCost(Seeker)
+    // event answers: a JumpSpot the pawn cannot use (no translocator, no jump boots) costs it 10,000,000 in its script.
+    std::map<Obj*, float> specials;
+    auto special_cost = [&](Obj* to) {
+        auto it = specials.find(to);
+        if (it != specials.end()) return it->second;
+        float cost = 0;
+        const Value* flag = vm_.prop(to, "bSpecialCost");
+        if (flag && flag->i) {
+            Value seeker = Value::of(VT::Object), ret;
+            seeker.o = pawn;
+            try {
+                if (vm_.event(to, "SpecialCost", {seeker}, &ret)) cost = float(std::max(0, ret.i));
+            } catch (const std::exception& e) {
+                errors[e.what()]++;
+            }
+        }
+        return specials[to] = cost;
+    };
     Obj* goal = nullptr;
     std::set<Obj*> done;
     while (!open.empty()) {
@@ -133,7 +152,7 @@ Obj* World::route(Obj* pawn, const std::function<float(Obj*, float)>& weight, fl
         if (w > *best) *best = w, goal = n;
         for (const Edge& e : paths_[n]) {
             if (e.radius > 0 && (float(e.radius) < radius || float(e.height) < height)) continue;  // too small
-            float nc = c + e.distance;
+            float nc = c + e.distance + special_cost(e.to);
             auto it = d.find(e.to);
             if (it == d.end() || nc < it->second) d[e.to] = nc, prev[e.to] = n, open.push({nc, e.to});
         }
